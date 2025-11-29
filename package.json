@@ -13,6 +13,7 @@
     "@react-three/fiber": "^9.4.2",
     "@supabase/supabase-js": "^2.86.0",
     "@types/three": "^0.181.0",
+    "browser-image-compression": "^2.0.2",
     "next": "16.0.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",
