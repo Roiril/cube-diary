@@ -1,13 +1,13 @@
 "use client";
 
-import React, { Component, ReactNode } from "react"; // Reactの機能をインポート
+import React, { Component, ReactNode } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useRef, useState, useEffect, Suspense } from "react";
 import { Mesh } from "three";
 import { OrbitControls, Environment, useTexture } from "@react-three/drei";
 import { supabase } from "@/lib/supabaseClient";
 
-// 🛡️ エラーの防波堤（これがないと画像エラーでアプリ全体が死にます）
+// 🛡️ エラー防波堤
 class TextureErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
   constructor(props: any) {
     super(props);
@@ -22,12 +22,12 @@ class TextureErrorBoundary extends Component<{ fallback: ReactNode; children: Re
   }
 }
 
-// 📦 テクスチャ（画像）付きのキューブ
+// 📦 テクスチャ付きキューブ
 function TexturedCube({ imageUrl }: { imageUrl: string }) {
   const meshRef = useRef<Mesh>(null!);
   const [active, setActive] = useState(false);
   
-  // ここで読み込みに失敗するとエラーが発生する
+  // プロキシ経由で読み込む
   const texture = useTexture(`/api/proxy?url=${encodeURIComponent(imageUrl)}`);
 
   useFrame((state, delta) => {
@@ -49,7 +49,7 @@ function TexturedCube({ imageUrl }: { imageUrl: string }) {
   );
 }
 
-// 📦 画像がない時やエラー時のプレーンなキューブ
+// 📦 フォールバック用キューブ
 function FallbackCube() {
   const meshRef = useRef<Mesh>(null!);
   useFrame((state, delta) => {
@@ -62,7 +62,6 @@ function FallbackCube() {
   return (
     <mesh ref={meshRef}>
       <boxGeometry args={[2, 2, 2]} />
-      {/* エラー時はグレーのワイヤーフレーム表示 */}
       <meshStandardMaterial color="#666" wireframe />
     </mesh>
   );
@@ -72,10 +71,11 @@ export default function Home() {
   const [latestEntry, setLatestEntry] = useState<any>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [newContent, setNewContent] = useState("");
-  const [newImageUrl, setNewImageUrl] = useState("");
+  
+  // ファイルアップロード用のState
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // データの取得
   const fetchEntry = async () => {
     const { data, error } = await supabase
       .from('entries')
@@ -92,24 +92,51 @@ export default function Home() {
     fetchEntry();
   }, []);
 
-  // 投稿処理
+  // 投稿処理（画像アップロードを含む）
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!file) {
+      alert("画像を選択してください！");
+      return;
+    }
     setLoading(true);
 
-    const { error } = await supabase
-      .from('entries')
-      .insert([{ content: newContent, image_url: newImageUrl }]);
+    try {
+      // 1. ファイル名をユニークにする（被らないようにランダムな文字列をつける）
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `${fileName}`;
 
-    if (error) {
-      alert('エラー: ' + error.message);
-    } else {
+      // 2. Supabase Storageにアップロード
+      const { error: uploadError } = await supabase.storage
+        .from('cube-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      // 3. 公開URLを取得
+      const { data: { publicUrl } } = supabase.storage
+        .from('cube-images')
+        .getPublicUrl(filePath);
+
+      // 4. データベースに保存
+      const { error: dbError } = await supabase
+        .from('entries')
+        .insert([{ content: newContent, image_url: publicUrl }]);
+
+      if (dbError) throw dbError;
+
+      // 成功時のリセット処理
       setNewContent("");
-      setNewImageUrl("");
+      setFile(null);
       setIsFormOpen(false);
       fetchEntry();
+
+    } catch (error: any) {
+      alert('エラーが発生しました: ' + error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -134,7 +161,6 @@ export default function Home() {
         <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} />
         
         <Suspense fallback={<FallbackCube />}>
-          {/* エラー防波堤で囲むことで、画像ロード失敗時にFallbackCubeを表示させる */}
           <TextureErrorBoundary fallback={<FallbackCube />}>
             {latestEntry && latestEntry.image_url ? (
               <TexturedCube imageUrl={latestEntry.image_url} />
@@ -162,18 +188,28 @@ export default function Home() {
           <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700">
             <h2 className="text-2xl font-bold mb-6">New Memory</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
+              
+              {/* 画像ファイル選択 */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Image URL</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="https://..."
-                  className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:outline-none focus:border-blue-500"
-                  value={newImageUrl}
-                  onChange={(e) => setNewImageUrl(e.target.value)}
-                />
-                <p className="text-xs text-gray-500 mt-1">※3Dで使える画像URLを入力してください</p>
+                <label className="block text-sm text-gray-400 mb-1">Photo</label>
+                <div className="relative border-2 border-dashed border-gray-600 rounded-lg p-4 hover:border-blue-500 transition-colors text-center cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    required
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="pointer-events-none">
+                    {file ? (
+                      <p className="text-blue-400 font-medium truncate">{file.name}</p>
+                    ) : (
+                      <p className="text-gray-500">Click to upload image</p>
+                    )}
+                  </div>
+                </div>
               </div>
+
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Message</label>
                 <textarea
@@ -197,7 +233,7 @@ export default function Home() {
                   disabled={loading}
                   className="flex-1 py-2 bg-blue-600 rounded hover:bg-blue-500 transition font-bold disabled:opacity-50"
                 >
-                  {loading ? 'Saving...' : 'Save Cube'}
+                  {loading ? 'Uploading...' : 'Save Cube'}
                 </button>
               </div>
             </form>
