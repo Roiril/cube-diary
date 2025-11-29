@@ -28,7 +28,7 @@ function TexturedCube({ imageUrl }: { imageUrl: string }) {
   const [active, setActive] = useState(false);
   
   // ここで読み込みに失敗するとエラーが発生する
-  const texture = useTexture(imageUrl);
+  const texture = useTexture(`/api/proxy?url=${encodeURIComponent(imageUrl)}`);
 
   useFrame((state, delta) => {
     if (meshRef.current) {
