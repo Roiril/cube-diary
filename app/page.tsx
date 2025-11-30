@@ -272,25 +272,23 @@ function TexturedCube({
   );
 }
 
-// 📦 フォールバック用キューブ
-function FallbackCube({ position = [0, 0, 0] }: { position?: [number, number, number] }) {
+// 📦 フォールバック用キューブ（色指定対応）
+function FallbackCube({ 
+  position = [0, 0, 0], 
+  color = "#444" 
+}: { 
+  position?: [number, number, number], 
+  color?: string 
+}) {
   return (
     <mesh position={position}>
       <boxGeometry args={[2, 2, 2]} />
-      <meshStandardMaterial color="#444" wireframe />
+      <meshStandardMaterial color={color} wireframe />
     </mesh>
   );
 }
 
-// 🗺️ 床コンポーネント
-function Floor() {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2, 0]} receiveShadow>
-      <planeGeometry args={[100, 100]} />
-      <meshStandardMaterial color="#1a1a1a" roughness={0.4} metalness={0.5} />
-    </mesh>
-  );
-}
+// 床コンポーネントは削除しました
 
 // 🎥 カメラ制御コンポーネント (修正版2)
 function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
@@ -307,8 +305,9 @@ function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
       targetPos.current.set(0, 0, isMobile ? 7 : 5.5);
       targetDistance.current = isMobile ? 7 : 5.5;
     } else {
-      targetPos.current.set(0, 12, isMobile ? 22 : 16);
-      targetDistance.current = new Vector3(0, 12, isMobile ? 22 : 16).length();
+      // ギャラリーは床がないので、全体が見渡せる少し遠くの位置に
+      targetPos.current.set(0, 5, isMobile ? 30 : 20);
+      targetDistance.current = new Vector3(0, 5, isMobile ? 30 : 20).length();
     }
   }, [viewMode, size.width]); 
 
@@ -328,7 +327,8 @@ export default function Home() {
   const [entries, setEntries] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'single' | 'gallery'>('single');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [galleryLayout, setGalleryLayout] = useState<'grid' | 'spiral' | 'circle'>('grid');
+  // レイアウトの選択肢を更新: sphere (球体), helix (螺旋), wormhole (ワームホール)
+  const [galleryLayout, setGalleryLayout] = useState<'sphere' | 'helix' | 'wormhole'>('sphere');
   
   // 新規投稿用ステート
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -529,30 +529,42 @@ export default function Home() {
     return publicUrl;
   };
 
-  const getPosition = (index: number, total: number, layout: 'grid' | 'spiral' | 'circle'): [number, number, number] => {
+  // 3次元的な配置ロジック (New!)
+  const getPosition = (index: number, total: number, layout: 'sphere' | 'helix' | 'wormhole'): [number, number, number] => {
     switch (layout) {
-      case 'grid':
-        const COLS = 4;
-        const SPACING = 4;
-        const x = (index % COLS) * SPACING - (COLS * SPACING) / 2 + SPACING / 2;
-        const z = -Math.floor(index / COLS) * SPACING;
-        return [x, 0, z];
-      case 'spiral':
-        const spiralAngle = index * 0.8; 
-        const spiralRadius = 3 + index * 0.8;
+      case 'sphere':
+        // フィボナッチ球体配置: 均等に球面上に配置
+        const phi = Math.acos(-1 + (2 * index) / total);
+        const theta = Math.sqrt(total * Math.PI) * phi;
+        const r = Math.cbrt(total) * 3.5; // 数が増えると少し広がる
         return [
-          Math.cos(spiralAngle) * spiralRadius, 
-          0, 
-          Math.sin(spiralAngle) * spiralRadius
+          r * Math.cos(theta) * Math.sin(phi),
+          r * Math.sin(theta) * Math.sin(phi),
+          r * Math.cos(phi)
         ];
-      case 'circle':
-        const circleRadius = Math.max(5, total * 0.8);
-        const circleAngle = (index / total) * Math.PI * 2;
+
+      case 'helix':
+        // 3D螺旋配置: 縦に伸びる螺旋階段
+        const helixR = 4;
+        const helixY = (index - total / 2) * 1.5; // 中心を基準に上下に配置
+        const helixAngle = index * 0.8;
         return [
-          Math.cos(circleAngle) * circleRadius, 
-          0, 
-          Math.sin(circleAngle) * circleRadius
+          helixR * Math.cos(helixAngle),
+          helixY,
+          helixR * Math.sin(helixAngle)
         ];
+
+      case 'wormhole':
+        // ワームホール配置: 奥行き(Z)に向かって吸い込まれるトンネル
+        const tunnelR = 5;
+        const tunnelZ = (index - total / 2) * 3;
+        const tunnelAngle = index * 0.5;
+        return [
+          tunnelR * Math.cos(tunnelAngle),
+          tunnelR * Math.sin(tunnelAngle),
+          tunnelZ
+        ];
+
       default:
         return [0, 0, 0];
     }
@@ -561,7 +573,7 @@ export default function Home() {
   const currentEntry = entries[selectedIndex];
 
   return (
-    // 100dvhを使用して、アドレスバーがあっても画面全体を使うように変更
+    // 背景を完全な黒に変更し、touch-noneを追加してスマホでのスクロールを無効化
     <main className="h-[100dvh] w-full bg-black text-white overflow-hidden relative font-sans touch-none">
       
       {loading && (
@@ -607,7 +619,8 @@ export default function Home() {
 
         {viewMode === 'gallery' && (
           <div className="flex gap-1 md:gap-2 mt-2 bg-gray-800 p-1 rounded-lg">
-            {(['grid', 'spiral', 'circle'] as const).map((layout) => (
+            {/* 新しいレイアウトオプション */}
+            {(['sphere', 'helix', 'wormhole'] as const).map((layout) => (
               <button
                 key={layout}
                 onClick={() => setGalleryLayout(layout)}
@@ -745,8 +758,6 @@ export default function Home() {
 
         <CameraController viewMode={viewMode} />
 
-        {/* OrbitControlsは削除済み */}
-
         {viewMode === 'single' && currentEntry && (
           <PresentationControls 
             global 
@@ -775,8 +786,9 @@ export default function Home() {
             speed={1.0}
           >
             <group>
-              <Floor />
-              <ContactShadows resolution={1024} scale={50} blur={2} opacity={0.5} far={10} color="#000000" />
+              {/* 床を削除 */}
+              {/* ContactShadows は必要なら残すが、宇宙的な配置なら不要かもしれない。今回は削除 */}
+              {/* <ContactShadows resolution={1024} scale={50} blur={2} opacity={0.5} far={10} color="#000000" /> */}
               
               {entries.map((entry, index) => {
                 const position = getPosition(index, entries.length, galleryLayout);
@@ -803,6 +815,20 @@ export default function Home() {
                   </Suspense>
                 );
               })}
+
+              {/* ▼▼▼ 未来の配置予定地（ワイヤーフレーム） ▼▼▼ */}
+              {Array.from({ length: 8 }).map((_, i) => {
+                const futureIndex = entries.length + i;
+                const position = getPosition(futureIndex, entries.length + 8, galleryLayout);
+                return (
+                  <FallbackCube 
+                    key={`future-${futureIndex}`} 
+                    position={position} 
+                    color="#333" 
+                  />
+                );
+              })}
+
             </group>
           </PresentationControls>
         )}
