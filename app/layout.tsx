@@ -1,8 +1,16 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css"; // ★ これが抜けていました！これでデザインが戻ります
 
-// この環境では next/font/google や globals.css の解決に失敗する場合があるため、
-// 一時的にインポートを削除してビルドを通します。
-// ローカル環境で開発する際は、必要に応じて再度追加してください。
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "Cube Diary | 3D Photo Journal",
@@ -12,9 +20,9 @@ export const metadata: Metadata = {
     title: "Cube Diary | 3D Photo Journal",
     description: "思い出を3Dキューブに残そう。ドラッグ＆ドロップで展開図を作る新しい日記体験。",
     type: "website",
-    // サイトのURLが決まったらここに入れてください
-    url: "https://cube-diary.vercel.app/", 
-    // images: ["/og-image.png"], // OGP画像があれば設定
+    // 公開URLが決まったら書き換えてください
+    url: "https://cube-diary.vercel.app", 
+    images: ["/images/CubeDiaryCap.png"], 
   },
   twitter: {
     card: "summary_large_image",
@@ -28,8 +36,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      {/* フォント設定を削除し、シンプルな構成に変更しました */}
-      <body>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         {children}
       </body>
     </html>
