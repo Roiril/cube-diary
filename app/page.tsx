@@ -23,7 +23,7 @@ class TextureErrorBoundary extends Component<{ fallback: ReactNode; children: Re
   }
 }
 
-// ⏳ ローディング画面コンポーネント
+// ⏳ ローディング画面コンポーネント (色は白黒に)
 function LoadingOverlay({ message }: { message: string }) {
   return (
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in cursor-wait">
@@ -53,8 +53,7 @@ function CubeNetInput({
   ];
 
   return (
-    // スマホでは scale-75 で小さく表示して画面に収める
-    <div className="grid grid-cols-4 grid-rows-3 gap-2 w-64 h-48 mx-auto my-2 scale-75 md:scale-100 origin-center">
+    <div className="grid grid-cols-4 grid-rows-3 gap-2 w-64 h-48 mx-auto my-4 scale-90 md:scale-100">
       {faceConfig.map((face) => {
         const file = faces[face.index];
         const previewUrl = file ? URL.createObjectURL(file) : null;
@@ -62,6 +61,7 @@ function CubeNetInput({
         return (
           <div
             key={face.name}
+            // 選択時のボーダー色を青から白に変更
             className={`relative border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${file ? 'border-white bg-gray-800' : 'border-gray-600 hover:border-gray-400 bg-gray-900/50'}`}
             style={{
               gridColumn: face.col,
@@ -93,6 +93,7 @@ function CubeNetInput({
                     e.stopPropagation();
                     onRemove(face.index);
                   }}
+                  // 削除ボタンもモノトーンに
                   className="absolute top-0 right-0 bg-white text-black w-5 h-5 flex items-center justify-center rounded-bl text-xs hover:bg-gray-200"
                 >
                   ×
@@ -126,7 +127,7 @@ function CubeNet({
   ];
 
   return (
-    <div className="grid grid-cols-4 grid-rows-3 gap-1 w-48 h-36 mx-auto scale-90 md:scale-100 origin-center">
+    <div className="grid grid-cols-4 grid-rows-3 gap-1 w-48 h-36 mx-auto">
       {faces.map((face) => {
         const item = images[face.index];
         let url = "";
@@ -148,6 +149,7 @@ function CubeNet({
         return (
           <div
             key={face.name}
+            // ホバー時のボーダーを青から白へ
             className={`relative bg-gray-800 border border-white/20 rounded-sm overflow-hidden group ${isEditable ? 'cursor-pointer hover:border-white' : 'cursor-help'}`}
             style={{
               gridColumn: face.col,
@@ -190,6 +192,7 @@ function CubeNet({
                 />
               )
             }
+            {/* ホバーオーバーレイを黒系に統一 */}
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${isEditable ? 'bg-white/20 opacity-0 group-hover:opacity-100' : 'bg-black/60 opacity-0 group-hover:opacity-100'}`}>
               <span className="text-[10px] text-white font-mono font-bold uppercase">
                 {isEditable ? 'EDIT' : face.name}
@@ -289,7 +292,7 @@ function Floor() {
   );
 }
 
-// 🎥 カメラ制御コンポーネント
+// 🎥 カメラ制御コンポーネント (修正版2)
 function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
   const { size } = useThree();
   const targetPos = useRef(new Vector3());
@@ -311,6 +314,8 @@ function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
 
   useFrame((state, delta) => {
     const position = state.camera.position;
+
+    // カメラ位置をスムーズに移動 (Lerp)
     state.camera.position.lerp(targetPos.current, delta * 3);
     state.camera.lookAt(targetLookAt);
   });
@@ -330,7 +335,7 @@ export default function Home() {
   const [newContent, setNewContent] = useState("");
   const [faces, setFaces] = useState<(File | null)[]>(Array(6).fill(null)); 
   const [fillMode, setFillMode] = useState<'repeat' | 'color'>('repeat'); 
-  const [solidColor, setSolidColor] = useState('#888888'); 
+  const [solidColor, setSolidColor] = useState('#888888'); // 初期色をグレーに変更
 
   // 編集用ステート
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -338,7 +343,9 @@ export default function Home() {
   const [editContent, setEditContent] = useState("");
   const [isEditing, setIsEditing] = useState(false); 
 
+  // 削除用ステート
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [compressing, setCompressing] = useState(false);
 
@@ -496,7 +503,7 @@ export default function Home() {
 
   const uploadFile = async (file: File, index: number): Promise<string> => {
     const compressionOptions = {
-      maxSizeMB: 0.15,
+      maxSizeMB: 0.15, // 圧縮率強化
       maxWidthOrHeight: 1280,
       useWebWorker: true,
       fileType: 'image/jpeg',
@@ -554,8 +561,8 @@ export default function Home() {
   const currentEntry = entries[selectedIndex];
 
   return (
-    // mainの touch-none を削除して、UIのスクロールを可能にする
-    <main className="h-screen w-full bg-black text-white overflow-hidden relative font-sans">
+    // 100dvhを使用して、アドレスバーがあっても画面全体を使うように変更
+    <main className="h-[100dvh] w-full bg-black text-white overflow-hidden relative font-sans touch-none">
       
       {loading && (
         <LoadingOverlay message={compressing ? "Compressing Images..." : "Saving Data..."} />
@@ -583,6 +590,7 @@ export default function Home() {
 
       <div className="absolute top-4 right-4 md:top-8 md:right-8 z-20 flex flex-col items-end gap-2">
         <div className="flex gap-1 md:gap-2">
+          {/* ボタンのスタイルをモノトーンに */}
           <button
             onClick={() => setViewMode('single')}
             className={`px-3 py-1.5 md:px-4 md:py-2 text-sm md:text-base rounded-lg font-bold transition ${viewMode === 'single' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
@@ -638,6 +646,7 @@ export default function Home() {
           >
             ✏️
           </button>
+          {/* 削除ボタンを赤からグレー/白へ変更（モノトーン統一） */}
           <button
             onClick={() => setIsDeleteConfirmOpen(true)}
             className="bg-gray-800 text-white border border-gray-600 w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-lg md:text-xl shadow-lg hover:bg-white hover:text-black transition-all duration-200"
@@ -662,6 +671,7 @@ export default function Home() {
               </button>
               <button
                 onClick={handleDelete}
+                // 削除実行ボタンもモノトーンに（白背景黒文字で強調）
                 className="px-6 py-2 rounded-full bg-white text-black hover:bg-gray-200 transition font-bold"
               >
                 Delete
@@ -735,6 +745,8 @@ export default function Home() {
 
         <CameraController viewMode={viewMode} />
 
+        {/* OrbitControlsは削除済み */}
+
         {viewMode === 'single' && currentEntry && (
           <PresentationControls 
             global 
@@ -800,6 +812,7 @@ export default function Home() {
       {!isFormOpen && !isEditModalOpen && !isDeleteConfirmOpen && (
         <button
           onClick={() => setIsFormOpen(true)}
+          // 投稿ボタンも白黒に
           className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-20 bg-white text-black w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-200"
         >
           ＋
@@ -868,6 +881,7 @@ export default function Home() {
                 <label className="block text-sm text-gray-400 mb-1">Message</label>
                 <textarea
                   required
+                  // ボーダーフォーカス時も白に
                   className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white h-16 md:h-20 focus:outline-none focus:border-white"
                   placeholder="How was your day?"
                   value={newContent}
@@ -876,6 +890,7 @@ export default function Home() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setIsFormOpen(false)} className="flex-1 py-2 rounded hover:bg-gray-700 transition" disabled={loading}>Cancel</button>
+                {/* 保存ボタンも白黒に */}
                 <button type="submit" disabled={loading} className="flex-1 py-2 bg-white text-black rounded hover:bg-gray-200 transition font-bold disabled:opacity-50">
                   {loading ? (compressing ? 'Compressing...' : 'Uploading...') : 'Save Cube'}
                 </button>
