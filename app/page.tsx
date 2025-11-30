@@ -4,7 +4,7 @@ import React, { Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useState, useEffect, Suspense, useMemo } from "react";
 import { Mesh, Vector3, MathUtils } from "three";
-import { Environment, useTexture, ContactShadows, PresentationControls } from "@react-three/drei";
+import { OrbitControls, Environment, useTexture, Text, ContactShadows, PresentationControls } from "@react-three/drei";
 import { supabase } from "@/lib/supabaseClient";
 import imageCompression from 'browser-image-compression';
 
@@ -747,9 +747,14 @@ export default function Home() {
         {/* OrbitControlsは削除済み */}
 
         {viewMode === 'single' && currentEntry && (
+          // PresentationControls: オブジェクトそのものを回転させるラッパー
+          // global: 画面のどこをドラッグしても反応する
+          // rotation: 初期回転角度
+          // polar, azimuth: 回転制限（今回は制限なし）
+          // config: 物理挙動（mass等）の設定 -> エラーのため削除しデフォルトを使用
+          // snap: 削除して勝手に戻るのを防ぐ
           <PresentationControls 
             global 
-            config={{ mass: 1, tension: 170, friction: 26 }} 
             rotation={[0, 0, 0]} 
             polar={[-Math.PI / 2, Math.PI / 2]}
             azimuth={[-Infinity, Infinity]} 
