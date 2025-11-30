@@ -23,7 +23,7 @@ class TextureErrorBoundary extends Component<{ fallback: ReactNode; children: Re
   }
 }
 
-// ⏳ ローディング画面コンポーネント (色は白黒に)
+// ⏳ ローディング画面コンポーネント
 function LoadingOverlay({ message }: { message: string }) {
   return (
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in cursor-wait">
@@ -53,7 +53,8 @@ function CubeNetInput({
   ];
 
   return (
-    <div className="grid grid-cols-4 grid-rows-3 gap-2 w-64 h-48 mx-auto my-4 scale-90 md:scale-100">
+    // スマホでは scale-75 で小さく表示して画面に収める
+    <div className="grid grid-cols-4 grid-rows-3 gap-2 w-64 h-48 mx-auto my-2 scale-75 md:scale-100 origin-center">
       {faceConfig.map((face) => {
         const file = faces[face.index];
         const previewUrl = file ? URL.createObjectURL(file) : null;
@@ -61,7 +62,6 @@ function CubeNetInput({
         return (
           <div
             key={face.name}
-            // 選択時のボーダー色を青から白に変更
             className={`relative border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${file ? 'border-white bg-gray-800' : 'border-gray-600 hover:border-gray-400 bg-gray-900/50'}`}
             style={{
               gridColumn: face.col,
@@ -93,7 +93,6 @@ function CubeNetInput({
                     e.stopPropagation();
                     onRemove(face.index);
                   }}
-                  // 削除ボタンもモノトーンに
                   className="absolute top-0 right-0 bg-white text-black w-5 h-5 flex items-center justify-center rounded-bl text-xs hover:bg-gray-200"
                 >
                   ×
@@ -127,7 +126,7 @@ function CubeNet({
   ];
 
   return (
-    <div className="grid grid-cols-4 grid-rows-3 gap-1 w-48 h-36 mx-auto">
+    <div className="grid grid-cols-4 grid-rows-3 gap-1 w-48 h-36 mx-auto scale-90 md:scale-100 origin-center">
       {faces.map((face) => {
         const item = images[face.index];
         let url = "";
@@ -149,7 +148,6 @@ function CubeNet({
         return (
           <div
             key={face.name}
-            // ホバー時のボーダーを青から白へ
             className={`relative bg-gray-800 border border-white/20 rounded-sm overflow-hidden group ${isEditable ? 'cursor-pointer hover:border-white' : 'cursor-help'}`}
             style={{
               gridColumn: face.col,
@@ -192,7 +190,6 @@ function CubeNet({
                 />
               )
             }
-            {/* ホバーオーバーレイを黒系に統一 */}
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${isEditable ? 'bg-white/20 opacity-0 group-hover:opacity-100' : 'bg-black/60 opacity-0 group-hover:opacity-100'}`}>
               <span className="text-[10px] text-white font-mono font-bold uppercase">
                 {isEditable ? 'EDIT' : face.name}
@@ -292,7 +289,7 @@ function Floor() {
   );
 }
 
-// 🎥 カメラ制御コンポーネント (修正版2)
+// 🎥 カメラ制御コンポーネント
 function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
   const { size } = useThree();
   const targetPos = useRef(new Vector3());
@@ -314,8 +311,6 @@ function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
 
   useFrame((state, delta) => {
     const position = state.camera.position;
-
-    // カメラ位置をスムーズに移動 (Lerp)
     state.camera.position.lerp(targetPos.current, delta * 3);
     state.camera.lookAt(targetLookAt);
   });
@@ -335,7 +330,7 @@ export default function Home() {
   const [newContent, setNewContent] = useState("");
   const [faces, setFaces] = useState<(File | null)[]>(Array(6).fill(null)); 
   const [fillMode, setFillMode] = useState<'repeat' | 'color'>('repeat'); 
-  const [solidColor, setSolidColor] = useState('#888888'); // 初期色をグレーに変更
+  const [solidColor, setSolidColor] = useState('#888888'); 
 
   // 編集用ステート
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -343,14 +338,9 @@ export default function Home() {
   const [editContent, setEditContent] = useState("");
   const [isEditing, setIsEditing] = useState(false); 
 
-  // 削除用ステート
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [compressing, setCompressing] = useState(false);
-
-  // スマホ判定ステート
-  const [isMobile, setIsMobile] = useState(false);
 
   const fetchEntries = async () => {
     const { data, error } = await supabase
@@ -364,12 +354,6 @@ export default function Home() {
 
   useEffect(() => {
     fetchEntries();
-    
-    // 画面サイズ検知
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile(); // 初期実行
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   const getImageUrls = (entry: any): string[] => {
@@ -512,7 +496,7 @@ export default function Home() {
 
   const uploadFile = async (file: File, index: number): Promise<string> => {
     const compressionOptions = {
-      maxSizeMB: 0.15, // 圧縮率強化
+      maxSizeMB: 0.15,
       maxWidthOrHeight: 1280,
       useWebWorker: true,
       fileType: 'image/jpeg',
@@ -570,8 +554,8 @@ export default function Home() {
   const currentEntry = entries[selectedIndex];
 
   return (
-    // 背景を完全な黒に変更し、touch-noneを追加してスマホでのスクロールを無効化
-    <main className="h-screen w-full bg-black text-white overflow-hidden relative font-sans touch-none">
+    // mainの touch-none を削除して、UIのスクロールを可能にする
+    <main className="h-screen w-full bg-black text-white overflow-hidden relative font-sans">
       
       {loading && (
         <LoadingOverlay message={compressing ? "Compressing Images..." : "Saving Data..."} />
@@ -599,7 +583,6 @@ export default function Home() {
 
       <div className="absolute top-4 right-4 md:top-8 md:right-8 z-20 flex flex-col items-end gap-2">
         <div className="flex gap-1 md:gap-2">
-          {/* ボタンのスタイルをモノトーンに */}
           <button
             onClick={() => setViewMode('single')}
             className={`px-3 py-1.5 md:px-4 md:py-2 text-sm md:text-base rounded-lg font-bold transition ${viewMode === 'single' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
@@ -655,7 +638,6 @@ export default function Home() {
           >
             ✏️
           </button>
-          {/* 削除ボタンを赤からグレー/白へ変更（モノトーン統一） */}
           <button
             onClick={() => setIsDeleteConfirmOpen(true)}
             className="bg-gray-800 text-white border border-gray-600 w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-lg md:text-xl shadow-lg hover:bg-white hover:text-black transition-all duration-200"
@@ -680,7 +662,6 @@ export default function Home() {
               </button>
               <button
                 onClick={handleDelete}
-                // 削除実行ボタンもモノトーンに（白背景黒文字で強調）
                 className="px-6 py-2 rounded-full bg-white text-black hover:bg-gray-200 transition font-bold"
               >
                 Delete
@@ -692,12 +673,13 @@ export default function Home() {
 
       {isEditModalOpen && currentEntry && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in px-4">
-          <div className="bg-gray-800/90 p-6 md:p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-700 backdrop-blur-md max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-6 text-center">Edit Memory</h2>
-            <div className="flex flex-col gap-6">
-              <div className="bg-black/40 p-4 rounded-xl border border-white/10">
+          {/* フォームのスタイル調整：パディングを減らし、高さを制限 */}
+          <div className="bg-gray-800/90 p-4 md:p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-700 backdrop-blur-md max-h-[85vh] overflow-y-auto">
+            <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6 text-center">Edit Memory</h2>
+            <div className="flex flex-col gap-4 md:gap-6">
+              <div className="bg-black/40 p-3 md:p-4 rounded-xl border border-white/10">
                 <h3 className="text-white text-[10px] font-bold mb-3 text-center uppercase tracking-widest opacity-70">
-                  Texture Map (Drag & Drop or Click to Change)
+                  Texture Map (Drag & Drop or Click)
                 </h3>
                 <CubeNet 
                   images={editImages} 
@@ -712,7 +694,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Message</label>
                 <textarea
-                  className="w-full bg-gray-900 border border-gray-600 rounded p-3 text-white focus:outline-none focus:border-white h-28"
+                  className="w-full bg-gray-900 border border-gray-600 rounded p-3 text-white focus:outline-none focus:border-white h-20 md:h-28"
                   value={editContent}
                   onChange={(e) => {
                     setEditContent(e.target.value);
@@ -731,7 +713,6 @@ export default function Home() {
                 <button
                   onClick={handleUpdate}
                   disabled={!isEditing || loading}
-                  // 保存ボタンをモノトーンに
                   className={`flex-1 py-2 rounded font-bold transition ${
                     isEditing 
                       ? 'bg-white text-black hover:bg-gray-200' 
@@ -746,25 +727,21 @@ export default function Home() {
         </div>
       )}
 
-      <Canvas shadows>
+      {/* Canvasにのみtouch-noneを適用し、3D操作を優先する */}
+      <Canvas shadows className="touch-none">
         <ambientLight intensity={0.5} />
         <spotLight position={[10, 10, 10]} angle={0.3} penumbra={1} castShadow intensity={1} />
         <Environment preset="city" />
 
         <CameraController viewMode={viewMode} />
 
-        {/* OrbitControlsは削除済み */}
-
         {viewMode === 'single' && currentEntry && (
           <PresentationControls 
             global 
-            // @ts-ignore: config prop is missing in recent type definitions but still works
-            config={{ mass: 1, tension: 170, friction: 26 }}
             rotation={[0, 0, 0]} 
             polar={[-Math.PI / 2, Math.PI / 2]}
             azimuth={[-Infinity, Infinity]} 
-            // ★スマホでの感度をさらに上げる
-            speed={isMobile ? 8 : 1.5}
+            speed={1.5}
           >
             <Suspense fallback={<FallbackCube />}>
               <TextureErrorBoundary fallback={<FallbackCube />}>
@@ -783,8 +760,7 @@ export default function Home() {
             rotation={[0, 0, 0]}
             polar={[-Math.PI / 4, Math.PI / 4]} 
             azimuth={[-Infinity, Infinity]}
-            // ★ギャラリーも感度を上げる
-            speed={isMobile ? 5 : 1}
+            speed={1.0}
           >
             <group>
               <Floor />
@@ -824,7 +800,6 @@ export default function Home() {
       {!isFormOpen && !isEditModalOpen && !isDeleteConfirmOpen && (
         <button
           onClick={() => setIsFormOpen(true)}
-          // 投稿ボタンも白黒に
           className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-20 bg-white text-black w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-200"
         >
           ＋
@@ -833,9 +808,10 @@ export default function Home() {
 
       {isFormOpen && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
+          {/* フォームのスタイル調整：パディングを減らし、高さを制限 */}
+          <div className="bg-gray-800 p-4 md:p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[85vh] overflow-y-auto">
             <h2 className="text-2xl font-bold mb-4 text-center">New Memory</h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
               <div>
                 <label className="block text-sm text-gray-400 mb-2 text-center">Drag & Drop Images</label>
                 <CubeNetInput 
@@ -861,7 +837,6 @@ export default function Home() {
                       name="fillMode" 
                       checked={fillMode === 'repeat'} 
                       onChange={() => setFillMode('repeat')}
-                      // ラジオボタンのアクセントカラーはCSSで制御（Tailwindのtext-white等では色が変わらない場合があるため、標準の青のままか、カスタムCSSが必要だが今回はシンプルに）
                       className="accent-white" 
                     />
                     <span className="text-sm">Repeat Images</span>
@@ -893,8 +868,7 @@ export default function Home() {
                 <label className="block text-sm text-gray-400 mb-1">Message</label>
                 <textarea
                   required
-                  // ボーダーフォーカス時も白に
-                  className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white h-20 focus:outline-none focus:border-white"
+                  className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white h-16 md:h-20 focus:outline-none focus:border-white"
                   placeholder="How was your day?"
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
@@ -902,7 +876,6 @@ export default function Home() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setIsFormOpen(false)} className="flex-1 py-2 rounded hover:bg-gray-700 transition" disabled={loading}>Cancel</button>
-                {/* 保存ボタンも白黒に */}
                 <button type="submit" disabled={loading} className="flex-1 py-2 bg-white text-black rounded hover:bg-gray-200 transition font-bold disabled:opacity-50">
                   {loading ? (compressing ? 'Compressing...' : 'Uploading...') : 'Save Cube'}
                 </button>
