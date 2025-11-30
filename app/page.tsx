@@ -4,7 +4,7 @@ import React, { Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useState, useEffect, Suspense, useMemo } from "react";
 import { Mesh, Vector3, MathUtils } from "three";
-import { OrbitControls, Environment, useTexture, Text, ContactShadows } from "@react-three/drei";
+import { Environment, useTexture, ContactShadows, PresentationControls } from "@react-three/drei";
 import { supabase } from "@/lib/supabaseClient";
 import imageCompression from 'browser-image-compression';
 
@@ -23,7 +23,17 @@ class TextureErrorBoundary extends Component<{ fallback: ReactNode; children: Re
   }
 }
 
-// 📦 展開図形式の入力コンポーネント（新規作成用）
+// ⏳ ローディング画面コンポーネント
+function LoadingOverlay({ message }: { message: string }) {
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in cursor-wait">
+      <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p className="text-white text-lg font-bold tracking-widest animate-pulse">{message}</p>
+    </div>
+  );
+}
+
+// 📦 展開図形式の入力コンポーネント
 function CubeNetInput({ 
   faces, 
   onFileChange, 
@@ -43,7 +53,7 @@ function CubeNetInput({
   ];
 
   return (
-    <div className="grid grid-cols-4 grid-rows-3 gap-2 w-64 h-48 mx-auto my-4">
+    <div className="grid grid-cols-4 grid-rows-3 gap-2 w-64 h-48 mx-auto my-4 scale-90 md:scale-100">
       {faceConfig.map((face) => {
         const file = faces[face.index];
         const previewUrl = file ? URL.createObjectURL(file) : null;
@@ -88,7 +98,7 @@ function CubeNetInput({
                 </button>
               </>
             ) : (
-              <span className="text-xs text-gray-500 font-mono">{face.name}</span>
+              <span className="text-[10px] md:text-xs text-gray-500 font-mono">{face.name}</span>
             )}
           </div>
         );
@@ -97,7 +107,7 @@ function CubeNetInput({
   );
 }
 
-// 🗺️ 展開図コンポーネント（表示・編集兼用）
+// 🗺️ 展開図コンポーネント
 function CubeNet({ 
   images, 
   onImageUpdate 
@@ -167,10 +177,18 @@ function CubeNet({
               }
             }}
           >
-            <div 
-              className={`absolute inset-0 ${!isColor ? 'bg-cover bg-center' : ''}`}
-              style={style}
-            />
+            {
+              !isColor && url === "" ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-700/50">
+                  <span className="text-[8px] text-gray-500 font-mono">+</span>
+                </div>
+              ) : (
+                <div 
+                  className={`absolute inset-0 ${!isColor ? 'bg-cover bg-center' : ''}`}
+                  style={style}
+                />
+              )
+            }
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${isEditable ? 'bg-blue-500/40 opacity-0 group-hover:opacity-100' : 'bg-black/60 opacity-0 group-hover:opacity-100'}`}>
               <span className="text-[10px] text-white font-mono font-bold uppercase">
                 {isEditable ? 'EDIT' : face.name}
@@ -220,14 +238,8 @@ function TexturedCube({
   const loadUrls = textureMap.urls.length > 0 ? textureMap.urls : [DUMMY_IMG];
   const textures = useTexture(loadUrls);
 
-  useFrame((state, delta) => {
-    if (meshRef.current) {
-      const speed = (hovered && enableHoverEffect) ? 0.5 : 0.1;
-      meshRef.current.rotation.x += delta * speed;
-      meshRef.current.rotation.y += delta * speed;
-    }
-  });
-
+  // useFrameでの自動回転は削除（PresentationControlsで手動回転させるため）
+  
   return (
     <mesh
       ref={meshRef}
@@ -238,7 +250,7 @@ function TexturedCube({
       }}
       onPointerOver={() => setHover(true)}
       onPointerOut={() => setHover(false)}
-      scale={(hovered && enableHoverEffect) ? 1.1 : 1}
+      scale={1}
     >
       <boxGeometry args={[2, 2, 2]} />
       {images.map((item, i) => {
@@ -278,15 +290,41 @@ function Floor() {
   );
 }
 
-// 🎥 カメラ制御コンポーネント
+// 🎥 カメラ制御コンポーネント (修正版)
+// 距離のみを制御し、回転操作と競合しないようにする
 function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
-  const targetDistance = viewMode === 'single' ? 6 : 15;
+  const { size } = useThree();
+  const targetPos = useRef(new Vector3());
+  const targetLookAt = new Vector3(0, 0, 0);
+
+  // 目標とする「距離」（ズームイン/アウト防止用）
+  const targetDistance = useRef(0);
+
+  useEffect(() => {
+    // 画面幅に応じて目標位置を決定 (スマホ対応)
+    const isMobile = size.width < 768;
+
+    if (viewMode === 'single') {
+      // Single: 近く、正面
+      // Z位置を固定することで、常に正面から見えるようにする
+      targetPos.current.set(0, 0, isMobile ? 7 : 5.5);
+      // 原点からの距離を計算して記憶
+      targetDistance.current = isMobile ? 7 : 5.5;
+    } else {
+      // Gallery: 遠く、斜め上から見下ろす
+      // 全体を見渡せる位置
+      targetPos.current.set(0, 12, isMobile ? 22 : 16);
+      // 原点からの距離を計算して記憶
+      targetDistance.current = new Vector3(0, 12, isMobile ? 22 : 16).length();
+    }
+  }, [viewMode, size.width]); 
 
   useFrame((state, delta) => {
     const position = state.camera.position;
-    const currentDistance = position.length();
-    const newDistance = MathUtils.lerp(currentDistance, targetDistance, delta * 2);
-    position.setLength(newDistance);
+
+    // カメラ位置をスムーズに移動 (Lerp)
+    state.camera.position.lerp(targetPos.current, delta * 3);
+    state.camera.lookAt(targetLookAt);
   });
 
   return null;
@@ -311,6 +349,9 @@ export default function Home() {
   const [editImages, setEditImages] = useState<(string | File)[]>([]);
   const [editContent, setEditContent] = useState("");
   const [isEditing, setIsEditing] = useState(false); 
+
+  // 削除用ステート
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [compressing, setCompressing] = useState(false);
@@ -339,7 +380,6 @@ export default function Home() {
     return [];
   };
 
-  // 選択中のエントリが変わったら編集用ステートを初期化
   useEffect(() => {
     if (entries.length > 0 && entries[selectedIndex]) {
       const entry = entries[selectedIndex];
@@ -351,7 +391,6 @@ export default function Home() {
     }
   }, [selectedIndex, entries]);
 
-  // 新規投稿処理
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -401,10 +440,8 @@ export default function Home() {
     }
   };
 
-  // 編集のキャンセル処理
   const handleCancelEdit = () => {
     setIsEditModalOpen(false);
-    // リセット
     if (entries[selectedIndex]) {
       const entry = entries[selectedIndex];
       const urls = getImageUrls(entry);
@@ -415,7 +452,6 @@ export default function Home() {
     }
   };
 
-  // 更新処理（Update）
   const handleUpdate = async () => {
     if (!entries[selectedIndex]) return;
     setLoading(true);
@@ -447,13 +483,38 @@ export default function Home() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!entries[selectedIndex]) return;
+    setLoading(true);
+
+    try {
+      const entryId = entries[selectedIndex].id;
+      
+      const { error } = await supabase
+        .from('entries')
+        .delete()
+        .eq('id', entryId);
+
+      if (error) throw error;
+
+      setIsDeleteConfirmOpen(false);
+      setSelectedIndex(0);
+      fetchEntries();
+
+    } catch (error: any) {
+      alert('Delete Error: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const uploadFile = async (file: File, index: number): Promise<string> => {
     const compressionOptions = {
-      maxSizeMB: 1,
-      maxWidthOrHeight: 1920,
+      maxSizeMB: 0.15, // 圧縮率強化
+      maxWidthOrHeight: 1280,
       useWebWorker: true,
       fileType: 'image/jpeg',
-      initialQuality: 0.8
+      initialQuality: 0.6
     };
 
     let fileToUpload = file;
@@ -509,12 +570,15 @@ export default function Home() {
   return (
     <main className="h-screen w-full bg-gray-900 text-white overflow-hidden relative font-sans">
       
-      {/* ヘッダー情報（Singleモード用） */}
-      {viewMode === 'single' && currentEntry && !isEditModalOpen && (
-        <div className="absolute top-8 left-8 z-10 pointer-events-none animate-fade-in">
-          <h1 className="text-4xl font-bold mb-2 tracking-tighter">Cube Diary</h1>
-          <p className="text-xl font-light opacity-90">"{currentEntry.content}"</p>
-          <p className="text-sm opacity-50 mt-1 font-mono">
+      {loading && (
+        <LoadingOverlay message={compressing ? "Compressing Images..." : "Saving Data..."} />
+      )}
+
+      {viewMode === 'single' && currentEntry && !isEditModalOpen && !isDeleteConfirmOpen && (
+        <div className="absolute top-4 left-4 md:top-8 md:left-8 z-10 pointer-events-none animate-fade-in max-w-[80%]">
+          <h1 className="text-2xl md:text-4xl font-bold mb-2 tracking-tighter">Cube Diary</h1>
+          <p className="text-lg md:text-xl font-light opacity-90 line-clamp-2">"{currentEntry.content}"</p>
+          <p className="text-xs md:text-sm opacity-50 mt-1 font-mono">
             {new Date(currentEntry.created_at).toLocaleString()}
           </p>
           <p className="text-xs opacity-40 mt-1">
@@ -523,38 +587,36 @@ export default function Home() {
         </div>
       )}
 
-      {/* Galleryモードのヘッダー */}
       {viewMode === 'gallery' && (
-        <div className="absolute top-8 left-8 z-10 pointer-events-none animate-fade-in">
-          <h1 className="text-4xl font-bold mb-2 tracking-tighter">Memory Gallery</h1>
-          <p className="opacity-70">Click a cube to view details</p>
+        <div className="absolute top-4 left-4 md:top-8 md:left-8 z-10 pointer-events-none animate-fade-in">
+          <h1 className="text-2xl md:text-4xl font-bold mb-2 tracking-tighter">Memory Gallery</h1>
+          <p className="text-sm md:text-base opacity-70">Drag to rotate the view</p>
         </div>
       )}
 
-      {/* モード切替ボタン */}
-      <div className="absolute top-8 right-8 z-20 flex flex-col items-end gap-2">
-        <div className="flex gap-2">
+      <div className="absolute top-4 right-4 md:top-8 md:right-8 z-20 flex flex-col items-end gap-2">
+        <div className="flex gap-1 md:gap-2">
           <button
             onClick={() => setViewMode('single')}
-            className={`px-4 py-2 rounded-lg font-bold transition ${viewMode === 'single' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+            className={`px-3 py-1.5 md:px-4 md:py-2 text-sm md:text-base rounded-lg font-bold transition ${viewMode === 'single' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
           >
             Single
           </button>
           <button
             onClick={() => setViewMode('gallery')}
-            className={`px-4 py-2 rounded-lg font-bold transition ${viewMode === 'gallery' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+            className={`px-3 py-1.5 md:px-4 md:py-2 text-sm md:text-base rounded-lg font-bold transition ${viewMode === 'gallery' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
           >
             Gallery
           </button>
         </div>
 
         {viewMode === 'gallery' && (
-          <div className="flex gap-2 mt-2 bg-gray-800 p-1 rounded-lg">
+          <div className="flex gap-1 md:gap-2 mt-2 bg-gray-800 p-1 rounded-lg">
             {(['grid', 'spiral', 'circle'] as const).map((layout) => (
               <button
                 key={layout}
                 onClick={() => setGalleryLayout(layout)}
-                className={`px-3 py-1 rounded text-sm transition ${galleryLayout === layout ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                className={`px-2 py-1 md:px-3 text-xs md:text-sm rounded transition ${galleryLayout === layout ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
               >
                 {layout.charAt(0).toUpperCase() + layout.slice(1)}
               </button>
@@ -563,42 +625,70 @@ export default function Home() {
         )}
       </div>
 
-      {viewMode === 'single' && entries.length > 1 && !isEditModalOpen && (
+      {viewMode === 'single' && entries.length > 1 && !isEditModalOpen && !isDeleteConfirmOpen && (
         <>
           <button
             onClick={() => setSelectedIndex((prev) => (prev + 1) % entries.length)}
-            className="absolute top-1/2 right-4 z-20 text-4xl opacity-50 hover:opacity-100 transition"
+            className="absolute top-1/2 right-2 md:right-4 z-20 text-3xl md:text-4xl opacity-50 hover:opacity-100 transition p-2"
           >
             ▶
           </button>
           <button
             onClick={() => setSelectedIndex((prev) => (prev - 1 + entries.length) % entries.length)}
-            className="absolute top-1/2 left-4 z-20 text-4xl opacity-50 hover:opacity-100 transition"
+            className="absolute top-1/2 left-2 md:left-4 z-20 text-3xl md:text-4xl opacity-50 hover:opacity-100 transition p-2"
           >
             ◀
           </button>
         </>
       )}
 
-      {/* 編集ボタン (Singleモード用) */}
-      {viewMode === 'single' && currentEntry && !isEditModalOpen && (
-        <button
-          onClick={() => setIsEditModalOpen(true)}
-          className="absolute bottom-8 left-8 z-20 bg-gray-800 text-white w-14 h-14 rounded-full flex items-center justify-center text-xl shadow-lg hover:bg-gray-700 transition-transform duration-200"
-          title="Edit Cube"
-        >
-          ✏️
-        </button>
+      {viewMode === 'single' && currentEntry && !isEditModalOpen && !isDeleteConfirmOpen && (
+        <div className="absolute bottom-6 left-6 md:bottom-8 md:left-8 z-20 flex gap-4">
+          <button
+            onClick={() => setIsEditModalOpen(true)}
+            className="bg-gray-800 text-white w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-lg md:text-xl shadow-lg hover:bg-gray-700 transition-transform duration-200"
+            title="Edit Cube"
+          >
+            ✏️
+          </button>
+          <button
+            onClick={() => setIsDeleteConfirmOpen(true)}
+            className="bg-red-600 text-white w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-lg md:text-xl shadow-lg hover:bg-red-500 transition-transform duration-200"
+            title="Delete Cube"
+          >
+            🗑️
+          </button>
+        </div>
       )}
 
-      {/* 編集モーダル */}
+      {isDeleteConfirmOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in px-4">
+          <div className="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 text-center">
+            <h3 className="text-xl font-bold text-white mb-4">Delete Memory?</h3>
+            <p className="text-gray-400 mb-8">This action cannot be undone.</p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                className="px-6 py-2 rounded-full bg-gray-700 text-white hover:bg-gray-600 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-6 py-2 rounded-full bg-red-600 text-white hover:bg-red-500 transition font-bold"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isEditModalOpen && currentEntry && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-gray-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-700 backdrop-blur-md">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in px-4">
+          <div className="bg-gray-800/90 p-6 md:p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-700 backdrop-blur-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold mb-6 text-center">Edit Memory</h2>
-            
             <div className="flex flex-col gap-6">
-              {/* テクスチャマップ編集 */}
               <div className="bg-black/40 p-4 rounded-xl border border-white/10">
                 <h3 className="text-white text-[10px] font-bold mb-3 text-center uppercase tracking-widest opacity-70">
                   Texture Map (Drag & Drop or Click to Change)
@@ -613,8 +703,6 @@ export default function Home() {
                   }}
                 />
               </div>
-
-              {/* テキスト編集 */}
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Message</label>
                 <textarea
@@ -626,8 +714,6 @@ export default function Home() {
                   }}
                 />
               </div>
-
-              {/* アクションボタン */}
               <div className="flex gap-3 mt-2">
                 <button
                   onClick={handleCancelEdit}
@@ -660,70 +746,89 @@ export default function Home() {
 
         <CameraController viewMode={viewMode} />
 
+        {/* OrbitControlsは削除 (PresentationControlsを使うため) */}
+
         {viewMode === 'single' && currentEntry && (
-          <Suspense fallback={<FallbackCube />}>
-            <TextureErrorBoundary fallback={<FallbackCube />}>
-              <TexturedCube 
-                // 編集モード中は編集中の画像をプレビュー
-                images={isEditModalOpen ? editImages : getImageUrls(currentEntry)} 
-                enableHoverEffect={false} 
-              />
-            </TextureErrorBoundary>
-          </Suspense>
+          // PresentationControls: オブジェクトそのものを回転させるラッパー
+          // global: 画面のどこをドラッグしても反応する
+          // rotation: 初期回転角度
+          // polar, azimuth: 回転制限（今回は制限なし）
+          // config: 物理挙動（mass等）の設定
+          <PresentationControls 
+            global 
+            config={{ mass: 1, tension: 170, friction: 26 }} 
+            rotation={[0, 0, 0]} 
+            polar={[-Math.PI / 2, Math.PI / 2]}
+            azimuth={[-Infinity, Infinity]} 
+          >
+            <Suspense fallback={<FallbackCube />}>
+              <TextureErrorBoundary fallback={<FallbackCube />}>
+                <TexturedCube 
+                  images={isEditModalOpen ? editImages : getImageUrls(currentEntry)} 
+                  enableHoverEffect={false} 
+                />
+              </TextureErrorBoundary>
+            </Suspense>
+          </PresentationControls>
         )}
 
         {viewMode === 'gallery' && (
-          <group>
-            <Floor />
-            <ContactShadows resolution={1024} scale={50} blur={2} opacity={0.5} far={10} color="#000000" />
-            
-            {entries.map((entry, index) => {
-              const position = getPosition(index, entries.length, galleryLayout);
-              const imageUrls = getImageUrls(entry);
-              const filledUrls = Array(6).fill(null).map((_, i) => imageUrls[i % imageUrls.length]);
+          <PresentationControls 
+            global 
+            config={{ mass: 2, tension: 400 }}
+            rotation={[0, 0, 0]}
+            polar={[-Math.PI / 4, Math.PI / 4]} // ギャラリーはあまり縦に回しすぎない方が見やすい
+            azimuth={[-Infinity, Infinity]}
+          >
+            <group>
+              <Floor />
+              <ContactShadows resolution={1024} scale={50} blur={2} opacity={0.5} far={10} color="#000000" />
+              
+              {entries.map((entry, index) => {
+                const position = getPosition(index, entries.length, galleryLayout);
+                const imageUrls = getImageUrls(entry);
+                const filledUrls = Array(6).fill(null).map((_, i) => imageUrls[i % imageUrls.length]);
 
-              return (
-                <Suspense key={entry.id} fallback={<FallbackCube position={position} />}>
-                  <TextureErrorBoundary fallback={<FallbackCube position={position} />}>
-                    {imageUrls.length > 0 ? (
-                      <TexturedCube 
-                        images={filledUrls} 
-                        position={position} 
-                        onClick={() => {
-                          setSelectedIndex(index);
-                          setViewMode('single');
-                        }}
-                        enableHoverEffect={true} 
-                      />
-                    ) : (
-                      <FallbackCube position={position} />
-                    )}
-                  </TextureErrorBoundary>
-                </Suspense>
-              );
-            })}
-          </group>
+                return (
+                  <Suspense key={entry.id} fallback={<FallbackCube position={position} />}>
+                    <TextureErrorBoundary fallback={<FallbackCube position={position} />}>
+                      {imageUrls.length > 0 ? (
+                        <TexturedCube 
+                          images={filledUrls} 
+                          position={position} 
+                          onClick={() => {
+                            setSelectedIndex(index);
+                            setViewMode('single');
+                          }}
+                          enableHoverEffect={true} 
+                        />
+                      ) : (
+                        <FallbackCube position={position} />
+                      )}
+                    </TextureErrorBoundary>
+                  </Suspense>
+                );
+              })}
+            </group>
+          </PresentationControls>
         )}
 
-        <OrbitControls makeDefault enableZoom={false} />
       </Canvas>
 
-      {!isFormOpen && !isEditModalOpen && (
+      {!isFormOpen && !isEditModalOpen && !isDeleteConfirmOpen && (
         <button
           onClick={() => setIsFormOpen(true)}
-          className="absolute bottom-8 right-8 z-20 bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-200"
+          className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-20 bg-blue-600 text-white w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-200"
         >
           ＋
         </button>
       )}
 
-      {/* 新規投稿フォーム */}
       {isFormOpen && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold mb-4 text-center">New Memory</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
-              
               <div>
                 <label className="block text-sm text-gray-400 mb-2 text-center">Drag & Drop Images</label>
                 <CubeNetInput 
@@ -740,10 +845,9 @@ export default function Home() {
                   }}
                 />
               </div>
-
               <div className="bg-gray-900/50 p-4 rounded-lg">
                 <label className="block text-sm text-gray-400 mb-2">Empty Faces Fill Mode:</label>
-                <div className="flex gap-4">
+                <div className="flex gap-4 flex-col md:flex-row">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input 
                       type="radio" 
@@ -765,7 +869,6 @@ export default function Home() {
                     <span className="text-sm">Solid Color</span>
                   </label>
                 </div>
-                
                 {fillMode === 'color' && (
                   <div className="mt-3 flex items-center gap-3 animate-fade-in">
                     <input 
@@ -778,7 +881,6 @@ export default function Home() {
                   </div>
                 )}
               </div>
-
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Message</label>
                 <textarea
@@ -789,7 +891,6 @@ export default function Home() {
                   onChange={(e) => setNewContent(e.target.value)}
                 />
               </div>
-
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setIsFormOpen(false)} className="flex-1 py-2 rounded hover:bg-gray-700 transition" disabled={loading}>Cancel</button>
                 <button type="submit" disabled={loading} className="flex-1 py-2 bg-blue-600 rounded hover:bg-blue-500 transition font-bold disabled:opacity-50">
