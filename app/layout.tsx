@@ -12,15 +12,9 @@ export const metadata: Metadata = {
     title: "Cube Diary | 3D Photo Journal",
     description: "思い出を3Dキューブに残そう。ドラッグ＆ドロップで展開図を作る新しい日記体験。",
     type: "website",
+    // サイトのURLが決まったらここに入れてください
     url: "https://cube-diary.vercel.app/", 
-    images: [
-      {
-        url: "/CubeDiaryCap.png", // シェア時に表示される画像
-        width: 630,
-        height: 630,
-      },
-    ],
-    locale: "ja_JP"
+    // images: ["/og-image.png"], // OGP画像があれば設定
   },
   twitter: {
     card: "summary_large_image",
