@@ -349,6 +349,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [compressing, setCompressing] = useState(false);
 
+  // スマホ判定ステート
+  const [isMobile, setIsMobile] = useState(false);
+
   const fetchEntries = async () => {
     const { data, error } = await supabase
       .from('entries')
@@ -361,6 +364,12 @@ export default function Home() {
 
   useEffect(() => {
     fetchEntries();
+    
+    // 画面サイズ検知
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile(); // 初期実行
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   const getImageUrls = (entry: any): string[] => {
@@ -747,19 +756,13 @@ export default function Home() {
         {/* OrbitControlsは削除済み */}
 
         {viewMode === 'single' && currentEntry && (
-          // PresentationControls: オブジェクトそのものを回転させるラッパー
-          // global: 画面のどこをドラッグしても反応する
-          // rotation: 初期回転角度
-          // polar, azimuth: 回転制限（今回は制限なし）
-          // config: 物理挙動（mass等）の設定 -> エラーのため削除しデフォルトを使用
-          // snap: 削除して勝手に戻るのを防ぐ
           <PresentationControls 
             global 
             rotation={[0, 0, 0]} 
             polar={[-Math.PI / 2, Math.PI / 2]}
             azimuth={[-Infinity, Infinity]} 
-            // ★スマホでの感度を上げる (speed 2.5)
-            speed={2.5}
+            // 感度をスマホ判定(isMobile)に応じて動的に切り替え
+            speed={isMobile ? 5 : 1.5}
           >
             <Suspense fallback={<FallbackCube />}>
               <TextureErrorBoundary fallback={<FallbackCube />}>
@@ -778,8 +781,8 @@ export default function Home() {
             rotation={[0, 0, 0]}
             polar={[-Math.PI / 4, Math.PI / 4]} 
             azimuth={[-Infinity, Infinity]}
-            // ★ギャラリーも少し感度を上げる
-            speed={1.5}
+            // 感度をスマホ判定(isMobile)に応じて動的に切り替え
+            speed={isMobile ? 3 : 1}
           >
             <group>
               <Floor />
