@@ -4,7 +4,7 @@ import React, { Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useState, useEffect, Suspense, useMemo } from "react";
 import { Mesh, Vector3, MathUtils } from "three";
-import { Environment, useTexture, ContactShadows, PresentationControls } from "@react-three/drei";
+import { OrbitControls, Environment, useTexture, Text, ContactShadows, PresentationControls } from "@react-three/drei";
 import { supabase } from "@/lib/supabaseClient";
 import imageCompression from 'browser-image-compression';
 
@@ -238,8 +238,6 @@ function TexturedCube({
   const loadUrls = textureMap.urls.length > 0 ? textureMap.urls : [DUMMY_IMG];
   const textures = useTexture(loadUrls);
 
-  // useFrameでの自動回転は削除（PresentationControlsで手動回転させるため）
-  
   return (
     <mesh
       ref={meshRef}
@@ -290,31 +288,22 @@ function Floor() {
   );
 }
 
-// 🎥 カメラ制御コンポーネント (修正版)
-// 距離のみを制御し、回転操作と競合しないようにする
+// 🎥 カメラ制御コンポーネント (修正版2)
 function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
   const { size } = useThree();
   const targetPos = useRef(new Vector3());
   const targetLookAt = new Vector3(0, 0, 0);
 
-  // 目標とする「距離」（ズームイン/アウト防止用）
   const targetDistance = useRef(0);
 
   useEffect(() => {
-    // 画面幅に応じて目標位置を決定 (スマホ対応)
     const isMobile = size.width < 768;
 
     if (viewMode === 'single') {
-      // Single: 近く、正面
-      // Z位置を固定することで、常に正面から見えるようにする
       targetPos.current.set(0, 0, isMobile ? 7 : 5.5);
-      // 原点からの距離を計算して記憶
       targetDistance.current = isMobile ? 7 : 5.5;
     } else {
-      // Gallery: 遠く、斜め上から見下ろす
-      // 全体を見渡せる位置
       targetPos.current.set(0, 12, isMobile ? 22 : 16);
-      // 原点からの距離を計算して記憶
       targetDistance.current = new Vector3(0, 12, isMobile ? 22 : 16).length();
     }
   }, [viewMode, size.width]); 
@@ -510,7 +499,7 @@ export default function Home() {
 
   const uploadFile = async (file: File, index: number): Promise<string> => {
     const compressionOptions = {
-      maxSizeMB: 0.15, // 圧縮率強化
+      maxSizeMB: 0.15,
       maxWidthOrHeight: 1280,
       useWebWorker: true,
       fileType: 'image/jpeg',
@@ -746,17 +735,9 @@ export default function Home() {
 
         <CameraController viewMode={viewMode} />
 
-        {/* OrbitControlsは削除 (PresentationControlsを使うため) */}
-
         {viewMode === 'single' && currentEntry && (
-          // PresentationControls: オブジェクトそのものを回転させるラッパー
-          // global: 画面のどこをドラッグしても反応する
-          // rotation: 初期回転角度
-          // polar, azimuth: 回転制限（今回は制限なし）
-          // config: 物理挙動（mass等）の設定
           <PresentationControls 
             global 
-            config={{ mass: 1, tension: 170, friction: 26 }} 
             rotation={[0, 0, 0]} 
             polar={[-Math.PI / 2, Math.PI / 2]}
             azimuth={[-Infinity, Infinity]} 
@@ -775,9 +756,8 @@ export default function Home() {
         {viewMode === 'gallery' && (
           <PresentationControls 
             global 
-            config={{ mass: 2, tension: 400 }}
             rotation={[0, 0, 0]}
-            polar={[-Math.PI / 4, Math.PI / 4]} // ギャラリーはあまり縦に回しすぎない方が見やすい
+            polar={[-Math.PI / 4, Math.PI / 4]} 
             azimuth={[-Infinity, Infinity]}
           >
             <group>
