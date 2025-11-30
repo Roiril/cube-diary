@@ -2,8 +2,7 @@
 
 import React, { Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useRef, useState, useEffect, Suspense } from "react";
-// MathUtils を追加インポート
+import { useRef, useState, useEffect, Suspense, useMemo } from "react";
 import { Mesh, Vector3, MathUtils } from "three";
 import { OrbitControls, Environment, useTexture, Text, ContactShadows } from "@react-three/drei";
 import { supabase } from "@/lib/supabaseClient";
@@ -24,29 +23,208 @@ class TextureErrorBoundary extends Component<{ fallback: ReactNode; children: Re
   }
 }
 
+// 📦 展開図形式の入力コンポーネント（新規作成用）
+function CubeNetInput({ 
+  faces, 
+  onFileChange, 
+  onRemove 
+}: { 
+  faces: (File | null)[], 
+  onFileChange: (index: number, file: File) => void,
+  onRemove: (index: number) => void
+}) {
+  const faceConfig = [
+    { name: 'Top', index: 2, col: 2, row: 1 },
+    { name: 'Left', index: 1, col: 1, row: 2 },
+    { name: 'Front', index: 4, col: 2, row: 2 },
+    { name: 'Right', index: 0, col: 3, row: 2 },
+    { name: 'Back', index: 5, col: 4, row: 2 },
+    { name: 'Bottom', index: 3, col: 2, row: 3 },
+  ];
+
+  return (
+    <div className="grid grid-cols-4 grid-rows-3 gap-2 w-64 h-48 mx-auto my-4">
+      {faceConfig.map((face) => {
+        const file = faces[face.index];
+        const previewUrl = file ? URL.createObjectURL(file) : null;
+
+        return (
+          <div
+            key={face.name}
+            className={`relative border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${file ? 'border-blue-500 bg-gray-800' : 'border-gray-600 hover:border-gray-400 bg-gray-900/50'}`}
+            style={{
+              gridColumn: face.col,
+              gridRow: face.row,
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer.files?.[0]) {
+                onFileChange(face.index, e.dataTransfer.files[0]);
+              }
+            }}
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/*';
+              input.onchange = (e) => {
+                const f = (e.target as HTMLInputElement).files?.[0];
+                if (f) onFileChange(face.index, f);
+              };
+              input.click();
+            }}
+          >
+            {previewUrl ? (
+              <>
+                <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${previewUrl})` }} />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(face.index);
+                  }}
+                  className="absolute top-0 right-0 bg-red-600 text-white w-5 h-5 flex items-center justify-center rounded-bl text-xs hover:bg-red-500"
+                >
+                  ×
+                </button>
+              </>
+            ) : (
+              <span className="text-xs text-gray-500 font-mono">{face.name}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 🗺️ 展開図コンポーネント（表示・編集兼用）
+function CubeNet({ 
+  images, 
+  onImageUpdate 
+}: { 
+  images: (string | File)[], 
+  onImageUpdate?: (index: number, file: File) => void 
+}) {
+  const faces = [
+    { name: 'Top', index: 2, col: 2, row: 1 },
+    { name: 'Left', index: 1, col: 1, row: 2 },
+    { name: 'Front', index: 4, col: 2, row: 2 },
+    { name: 'Right', index: 0, col: 3, row: 2 },
+    { name: 'Back', index: 5, col: 4, row: 2 },
+    { name: 'Bottom', index: 3, col: 2, row: 3 },
+  ];
+
+  return (
+    <div className="grid grid-cols-4 grid-rows-3 gap-1 w-48 h-36 mx-auto">
+      {faces.map((face) => {
+        const item = images[face.index];
+        let url = "";
+        let isColor = false;
+
+        if (item instanceof File) {
+          url = URL.createObjectURL(item);
+        } else if (typeof item === 'string') {
+          url = item;
+          isColor = url.startsWith('color:');
+        }
+
+        const style = isColor 
+          ? { backgroundColor: url.replace('color:', '') } 
+          : { backgroundImage: `url(${url})` };
+
+        const isEditable = !!onImageUpdate;
+
+        return (
+          <div
+            key={face.name}
+            className={`relative bg-gray-800 border border-white/20 rounded-sm overflow-hidden group ${isEditable ? 'cursor-pointer hover:border-blue-400' : 'cursor-help'}`}
+            style={{
+              gridColumn: face.col,
+              gridRow: face.row,
+            }}
+            title={isEditable ? `Edit ${face.name}` : `${face.name} Face`}
+            onDragOver={(e) => {
+              if (isEditable) e.preventDefault();
+            }}
+            onDrop={(e) => {
+              if (isEditable) {
+                e.preventDefault();
+                if (e.dataTransfer.files?.[0] && onImageUpdate) {
+                  onImageUpdate(face.index, e.dataTransfer.files[0]);
+                }
+              }
+            }}
+            onClick={() => {
+              if (isEditable && onImageUpdate) {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = (e) => {
+                  const f = (e.target as HTMLInputElement).files?.[0];
+                  if (f) onImageUpdate(face.index, f);
+                };
+                input.click();
+              }
+            }}
+          >
+            <div 
+              className={`absolute inset-0 ${!isColor ? 'bg-cover bg-center' : ''}`}
+              style={style}
+            />
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${isEditable ? 'bg-blue-500/40 opacity-0 group-hover:opacity-100' : 'bg-black/60 opacity-0 group-hover:opacity-100'}`}>
+              <span className="text-[10px] text-white font-mono font-bold uppercase">
+                {isEditable ? 'EDIT' : face.name}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // 📦 汎用キューブコンポーネント
 function TexturedCube({ 
-  imageUrls, 
+  images, 
   position = [0, 0, 0], 
-  onClick 
+  onClick,
+  enableHoverEffect = true
 }: { 
-  imageUrls: string[], 
+  images: (string | File)[], 
   position?: [number, number, number],
-  onClick?: () => void
+  onClick?: () => void,
+  enableHoverEffect?: boolean
 }) {
   const meshRef = useRef<Mesh>(null!);
   const [hovered, setHover] = useState(false);
   
-  const filledUrls = Array(6).fill(null).map((_, i) => {
-    return imageUrls[i % imageUrls.length];
-  });
-  const proxyUrls = filledUrls.map(url => `/api/proxy?url=${encodeURIComponent(url)}`);
-  const textures = useTexture(proxyUrls);
+  const textureMap = useMemo(() => {
+    const urls: string[] = [];
+    const mapping: number[] = [];
+
+    images.forEach((item, i) => {
+      if (item instanceof File) {
+        urls.push(URL.createObjectURL(item));
+        mapping[i] = urls.length - 1;
+      } else if (typeof item === 'string' && !item.startsWith('color:')) {
+        urls.push(`/api/proxy?url=${encodeURIComponent(item)}`);
+        mapping[i] = urls.length - 1;
+      } else {
+        mapping[i] = -1;
+      }
+    });
+    return { urls, mapping };
+  }, [images]);
+
+  const DUMMY_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  const loadUrls = textureMap.urls.length > 0 ? textureMap.urls : [DUMMY_IMG];
+  const textures = useTexture(loadUrls);
 
   useFrame((state, delta) => {
     if (meshRef.current) {
-      meshRef.current.rotation.x += delta * (hovered ? 0.5 : 0.1);
-      meshRef.current.rotation.y += delta * (hovered ? 0.5 : 0.1);
+      const speed = (hovered && enableHoverEffect) ? 0.5 : 0.1;
+      meshRef.current.rotation.x += delta * speed;
+      meshRef.current.rotation.y += delta * speed;
     }
   });
 
@@ -60,12 +238,22 @@ function TexturedCube({
       }}
       onPointerOver={() => setHover(true)}
       onPointerOut={() => setHover(false)}
-      scale={hovered ? 1.1 : 1}
+      scale={(hovered && enableHoverEffect) ? 1.1 : 1}
     >
       <boxGeometry args={[2, 2, 2]} />
-      {textures.map((texture, i) => (
-        <meshStandardMaterial key={i} attach={`material-${i}`} map={texture} />
-      ))}
+      {images.map((item, i) => {
+        if (typeof item === 'string' && item.startsWith('color:')) {
+          return <meshStandardMaterial key={i} attach={`material-${i}`} color={item.replace('color:', '')} />;
+        }
+        
+        const texIndex = textureMap.mapping[i];
+        if (texIndex !== -1 && textures.length > texIndex) {
+           const texArray = Array.isArray(textures) ? textures : [textures];
+           return <meshStandardMaterial key={i} attach={`material-${i}`} map={texArray[texIndex]} />;
+        }
+        
+        return <meshStandardMaterial key={i} attach={`material-${i}`} color="#666" />;
+      })}
     </mesh>
   );
 }
@@ -75,7 +263,7 @@ function FallbackCube({ position = [0, 0, 0] }: { position?: [number, number, nu
   return (
     <mesh position={position}>
       <boxGeometry args={[2, 2, 2]} />
-      <meshStandardMaterial color="#666" wireframe />
+      <meshStandardMaterial color="#444" wireframe />
     </mesh>
   );
 }
@@ -90,24 +278,14 @@ function Floor() {
   );
 }
 
-// 🎥 カメラ制御コンポーネント（修正版）
+// 🎥 カメラ制御コンポーネント
 function CameraController({ viewMode }: { viewMode: 'single' | 'gallery' }) {
-  // 目標とする「距離」を設定
-  // Single: 近く (6), Gallery: 遠く (15)
   const targetDistance = viewMode === 'single' ? 6 : 15;
 
   useFrame((state, delta) => {
     const position = state.camera.position;
-    
-    // 現在の原点(0,0,0)からの距離を計算
     const currentDistance = position.length();
-    
-    // 現在の距離から目標の距離へ、スムーズに数値を変化させる（線形補間）
-    // 座標を強制するのではなく「距離（ベクトルの長さ）」だけを調整することで、
-    // ユーザーによる「回転操作（ベクトルの向きの変更）」を邪魔しないようにする
     const newDistance = MathUtils.lerp(currentDistance, targetDistance, delta * 2);
-    
-    // カメラ位置ベクトルの長さを更新
     position.setLength(newDistance);
   });
 
@@ -119,10 +297,21 @@ export default function Home() {
   const [entries, setEntries] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'single' | 'gallery'>('single');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [galleryLayout, setGalleryLayout] = useState<'grid' | 'spiral' | 'circle'>('grid');
   
+  // 新規投稿用ステート
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [newContent, setNewContent] = useState("");
-  const [files, setFiles] = useState<FileList | null>(null);
+  const [faces, setFaces] = useState<(File | null)[]>(Array(6).fill(null)); 
+  const [fillMode, setFillMode] = useState<'repeat' | 'color'>('repeat'); 
+  const [solidColor, setSolidColor] = useState('#3b82f6'); 
+
+  // 編集用ステート
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editImages, setEditImages] = useState<(string | File)[]>([]);
+  const [editContent, setEditContent] = useState("");
+  const [isEditing, setIsEditing] = useState(false); 
+
   const [loading, setLoading] = useState(false);
   const [compressing, setCompressing] = useState(false);
 
@@ -140,57 +329,65 @@ export default function Home() {
     fetchEntries();
   }, []);
 
+  const getImageUrls = (entry: any): string[] => {
+    if (!entry) return [];
+    if (Array.isArray(entry.image_urls)) return entry.image_urls;
+    if (typeof entry.image_url === 'string') return [entry.image_url];
+    if (typeof entry.image_urls === 'string') {
+        try { return JSON.parse(entry.image_urls); } catch { return []; }
+    }
+    return [];
+  };
+
+  // 選択中のエントリが変わったら編集用ステートを初期化
+  useEffect(() => {
+    if (entries.length > 0 && entries[selectedIndex]) {
+      const entry = entries[selectedIndex];
+      const urls = getImageUrls(entry);
+      const filledImages = Array(6).fill(null).map((_, i) => urls[i % urls.length] || 'color:#000000');
+      setEditImages(filledImages);
+      setEditContent(entry.content);
+      setIsEditing(false);
+    }
+  }, [selectedIndex, entries]);
+
+  // 新規投稿処理
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!files || files.length === 0 || files.length > 6) {
-      alert("画像は1〜6枚選択してください");
+    
+    const hasImage = faces.some(f => f !== null);
+    if (fillMode === 'repeat' && !hasImage) {
+      alert("At least one image is required for Repeat Mode.");
       return;
     }
+
     setLoading(true);
     setCompressing(true);
 
     try {
-      const uploadedUrls: string[] = [];
-      const compressionOptions = {
-        maxSizeMB: 1,
-        maxWidthOrHeight: 1920,
-        useWebWorker: true,
-        fileType: 'image/jpeg',
-        initialQuality: 0.8
-      };
-
-      for (let i = 0; i < files.length; i++) {
-        const originalFile = files[i];
-        let fileToUpload = originalFile;
-        
-        try {
-          const compressedFile = await imageCompression(originalFile, compressionOptions);
-          fileToUpload = new File([compressedFile], originalFile.name, { type: compressedFile.type });
-        } catch (error) {
-          console.error("Compression failed:", error);
-        }
-
-        const fileExt = fileToUpload.type.split('/')[1] || 'jpg';
-        const fileName = `${Math.random().toString(36).substring(2)}_${i}.${fileExt}`;
-        const filePath = `${fileName}`;
-
-        const { error: uploadError } = await supabase.storage.from('cube-images').upload(filePath, fileToUpload);
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage.from('cube-images').getPublicUrl(filePath);
-        uploadedUrls.push(publicUrl);
-      }
+      const uploadedUrls: (string | null)[] = await Promise.all(faces.map(async (file, index) => {
+        if (!file) return null;
+        return await uploadFile(file, index);
+      }));
 
       setCompressing(false);
 
+      const validUrls = uploadedUrls.filter(u => u !== null) as string[];
+      const finalImageUrls = uploadedUrls.map((url, i) => {
+        if (url) return url;
+        if (fillMode === 'color') return `color:${solidColor}`;
+        if (validUrls.length === 0) return 'color:#000000';
+        return validUrls[i % validUrls.length];
+      });
+
       const { error: dbError } = await supabase
         .from('entries')
-        .insert([{ content: newContent, image_urls: uploadedUrls }]);
+        .insert([{ content: newContent, image_urls: finalImageUrls }]);
 
       if (dbError) throw dbError;
 
       setNewContent("");
-      setFiles(null);
+      setFaces(Array(6).fill(null));
       setIsFormOpen(false);
       fetchEntries();
       setViewMode('single');
@@ -204,14 +401,107 @@ export default function Home() {
     }
   };
 
-  const getImageUrls = (entry: any): string[] => {
-    if (!entry) return [];
-    if (Array.isArray(entry.image_urls)) return entry.image_urls;
-    if (typeof entry.image_url === 'string') return [entry.image_url];
-    if (typeof entry.image_urls === 'string') {
-        try { return JSON.parse(entry.image_urls); } catch { return []; }
+  // 編集のキャンセル処理
+  const handleCancelEdit = () => {
+    setIsEditModalOpen(false);
+    // リセット
+    if (entries[selectedIndex]) {
+      const entry = entries[selectedIndex];
+      const urls = getImageUrls(entry);
+      const filledImages = Array(6).fill(null).map((_, i) => urls[i % urls.length] || 'color:#000000');
+      setEditImages(filledImages);
+      setEditContent(entry.content);
+      setIsEditing(false);
     }
-    return [];
+  };
+
+  // 更新処理（Update）
+  const handleUpdate = async () => {
+    if (!entries[selectedIndex]) return;
+    setLoading(true);
+    
+    try {
+      const updatedUrls = await Promise.all(editImages.map(async (item, index) => {
+        if (item instanceof File) {
+          return await uploadFile(item, index);
+        }
+        return item as string;
+      }));
+
+      const { error } = await supabase
+        .from('entries')
+        .update({ content: editContent, image_urls: updatedUrls })
+        .eq('id', entries[selectedIndex].id);
+
+      if (error) throw error;
+
+      alert("Entry Updated!");
+      fetchEntries();
+      setIsEditing(false);
+      setIsEditModalOpen(false);
+
+    } catch (error: any) {
+      alert('Update Error: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const uploadFile = async (file: File, index: number): Promise<string> => {
+    const compressionOptions = {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1920,
+      useWebWorker: true,
+      fileType: 'image/jpeg',
+      initialQuality: 0.8
+    };
+
+    let fileToUpload = file;
+    try {
+      const compressedFile = await imageCompression(file, compressionOptions);
+      fileToUpload = new File([compressedFile], file.name, { type: compressedFile.type });
+    } catch (error) {
+      console.error("Compression failed:", error);
+    }
+
+    const fileExt = fileToUpload.type.split('/')[1] || 'jpg';
+    const fileName = `${Math.random().toString(36).substring(2)}_${index}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from('cube-images').upload(filePath, fileToUpload);
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('cube-images').getPublicUrl(filePath);
+    return publicUrl;
+  };
+
+  const getPosition = (index: number, total: number, layout: 'grid' | 'spiral' | 'circle'): [number, number, number] => {
+    switch (layout) {
+      case 'grid':
+        const COLS = 4;
+        const SPACING = 4;
+        const x = (index % COLS) * SPACING - (COLS * SPACING) / 2 + SPACING / 2;
+        const z = -Math.floor(index / COLS) * SPACING;
+        return [x, 0, z];
+      case 'spiral':
+        const spiralAngle = index * 0.8; 
+        const spiralRadius = 3 + index * 0.8;
+        return [
+          Math.cos(spiralAngle) * spiralRadius, 
+          0, 
+          Math.sin(spiralAngle) * spiralRadius
+        ];
+      case 'circle':
+        const circleRadius = Math.max(5, total * 0.8);
+        const circleAngle = (index / total) * Math.PI * 2;
+        return [
+          Math.cos(circleAngle) * circleRadius, 
+          0, 
+          Math.sin(circleAngle) * circleRadius
+        ];
+      default:
+        return [0, 0, 0];
+    }
   };
 
   const currentEntry = entries[selectedIndex];
@@ -219,7 +509,8 @@ export default function Home() {
   return (
     <main className="h-screen w-full bg-gray-900 text-white overflow-hidden relative font-sans">
       
-      {viewMode === 'single' && currentEntry && (
+      {/* ヘッダー情報（Singleモード用） */}
+      {viewMode === 'single' && currentEntry && !isEditModalOpen && (
         <div className="absolute top-8 left-8 z-10 pointer-events-none animate-fade-in">
           <h1 className="text-4xl font-bold mb-2 tracking-tighter">Cube Diary</h1>
           <p className="text-xl font-light opacity-90">"{currentEntry.content}"</p>
@@ -232,6 +523,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* Galleryモードのヘッダー */}
       {viewMode === 'gallery' && (
         <div className="absolute top-8 left-8 z-10 pointer-events-none animate-fade-in">
           <h1 className="text-4xl font-bold mb-2 tracking-tighter">Memory Gallery</h1>
@@ -239,22 +531,39 @@ export default function Home() {
         </div>
       )}
 
-      <div className="absolute top-8 right-8 z-20 flex gap-2">
-        <button
-          onClick={() => setViewMode('single')}
-          className={`px-4 py-2 rounded-lg font-bold transition ${viewMode === 'single' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-        >
-          Single
-        </button>
-        <button
-          onClick={() => setViewMode('gallery')}
-          className={`px-4 py-2 rounded-lg font-bold transition ${viewMode === 'gallery' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-        >
-          Gallery
-        </button>
+      {/* モード切替ボタン */}
+      <div className="absolute top-8 right-8 z-20 flex flex-col items-end gap-2">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode('single')}
+            className={`px-4 py-2 rounded-lg font-bold transition ${viewMode === 'single' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+          >
+            Single
+          </button>
+          <button
+            onClick={() => setViewMode('gallery')}
+            className={`px-4 py-2 rounded-lg font-bold transition ${viewMode === 'gallery' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+          >
+            Gallery
+          </button>
+        </div>
+
+        {viewMode === 'gallery' && (
+          <div className="flex gap-2 mt-2 bg-gray-800 p-1 rounded-lg">
+            {(['grid', 'spiral', 'circle'] as const).map((layout) => (
+              <button
+                key={layout}
+                onClick={() => setGalleryLayout(layout)}
+                className={`px-3 py-1 rounded text-sm transition ${galleryLayout === layout ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              >
+                {layout.charAt(0).toUpperCase() + layout.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {viewMode === 'single' && entries.length > 1 && (
+      {viewMode === 'single' && entries.length > 1 && !isEditModalOpen && (
         <>
           <button
             onClick={() => setSelectedIndex((prev) => (prev + 1) % entries.length)}
@@ -271,6 +580,79 @@ export default function Home() {
         </>
       )}
 
+      {/* 編集ボタン (Singleモード用) */}
+      {viewMode === 'single' && currentEntry && !isEditModalOpen && (
+        <button
+          onClick={() => setIsEditModalOpen(true)}
+          className="absolute bottom-8 left-8 z-20 bg-gray-800 text-white w-14 h-14 rounded-full flex items-center justify-center text-xl shadow-lg hover:bg-gray-700 transition-transform duration-200"
+          title="Edit Cube"
+        >
+          ✏️
+        </button>
+      )}
+
+      {/* 編集モーダル */}
+      {isEditModalOpen && currentEntry && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-gray-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-700 backdrop-blur-md">
+            <h2 className="text-2xl font-bold mb-6 text-center">Edit Memory</h2>
+            
+            <div className="flex flex-col gap-6">
+              {/* テクスチャマップ編集 */}
+              <div className="bg-black/40 p-4 rounded-xl border border-white/10">
+                <h3 className="text-white text-[10px] font-bold mb-3 text-center uppercase tracking-widest opacity-70">
+                  Texture Map (Drag & Drop or Click to Change)
+                </h3>
+                <CubeNet 
+                  images={editImages} 
+                  onImageUpdate={(index, file) => {
+                    const newImages = [...editImages];
+                    newImages[index] = file;
+                    setEditImages(newImages);
+                    setIsEditing(true);
+                  }}
+                />
+              </div>
+
+              {/* テキスト編集 */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Message</label>
+                <textarea
+                  className="w-full bg-gray-900 border border-gray-600 rounded p-3 text-white focus:outline-none focus:border-blue-500 h-28"
+                  value={editContent}
+                  onChange={(e) => {
+                    setEditContent(e.target.value);
+                    setIsEditing(true);
+                  }}
+                />
+              </div>
+
+              {/* アクションボタン */}
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={handleCancelEdit}
+                  className="flex-1 py-2 rounded hover:bg-gray-700 transition"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdate}
+                  disabled={!isEditing || loading}
+                  className={`flex-1 py-2 rounded font-bold transition ${
+                    isEditing 
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white' 
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  {loading ? 'Updating...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Canvas shadows>
         <ambientLight intensity={0.5} />
         <spotLight position={[10, 10, 10]} angle={0.3} penumbra={1} castShadow intensity={1} />
@@ -281,7 +663,11 @@ export default function Home() {
         {viewMode === 'single' && currentEntry && (
           <Suspense fallback={<FallbackCube />}>
             <TextureErrorBoundary fallback={<FallbackCube />}>
-              <TexturedCube imageUrls={getImageUrls(currentEntry)} />
+              <TexturedCube 
+                // 編集モード中は編集中の画像をプレビュー
+                images={isEditModalOpen ? editImages : getImageUrls(currentEntry)} 
+                enableHoverEffect={false} 
+              />
             </TextureErrorBoundary>
           </Suspense>
         )}
@@ -292,26 +678,25 @@ export default function Home() {
             <ContactShadows resolution={1024} scale={50} blur={2} opacity={0.5} far={10} color="#000000" />
             
             {entries.map((entry, index) => {
-              const COLS = 4;
-              const SPACING = 4;
-              const x = (index % COLS) * SPACING - (COLS * SPACING) / 2 + SPACING / 2;
-              const z = -Math.floor(index / COLS) * SPACING;
+              const position = getPosition(index, entries.length, galleryLayout);
               const imageUrls = getImageUrls(entry);
+              const filledUrls = Array(6).fill(null).map((_, i) => imageUrls[i % imageUrls.length]);
 
               return (
-                <Suspense key={entry.id} fallback={<FallbackCube position={[x, 0, z]} />}>
-                  <TextureErrorBoundary fallback={<FallbackCube position={[x, 0, z]} />}>
+                <Suspense key={entry.id} fallback={<FallbackCube position={position} />}>
+                  <TextureErrorBoundary fallback={<FallbackCube position={position} />}>
                     {imageUrls.length > 0 ? (
                       <TexturedCube 
-                        imageUrls={imageUrls} 
-                        position={[x, 0, z]} 
+                        images={filledUrls} 
+                        position={position} 
                         onClick={() => {
                           setSelectedIndex(index);
                           setViewMode('single');
                         }}
+                        enableHoverEffect={true} 
                       />
                     ) : (
-                      <FallbackCube position={[x, 0, z]} />
+                      <FallbackCube position={position} />
                     )}
                   </TextureErrorBoundary>
                 </Suspense>
@@ -323,7 +708,7 @@ export default function Home() {
         <OrbitControls makeDefault enableZoom={false} />
       </Canvas>
 
-      {!isFormOpen && (
+      {!isFormOpen && !isEditModalOpen && (
         <button
           onClick={() => setIsFormOpen(true)}
           className="absolute bottom-8 right-8 z-20 bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-200"
@@ -332,44 +717,80 @@ export default function Home() {
         </button>
       )}
 
+      {/* 新規投稿フォーム */}
       {isFormOpen && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700">
-            <h2 className="text-2xl font-bold mb-6">New Memory</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-4 text-center">New Memory</h2>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Photos (Up to 6)</label>
-                <div className="relative border-2 border-dashed border-gray-600 rounded-lg p-4 hover:border-blue-500 transition-colors text-center cursor-pointer group">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    required
-                    onChange={(e) => setFiles(e.target.files)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div className="pointer-events-none group-hover:text-blue-400 transition-colors">
-                    {files && files.length > 0 ? (
-                      <p className="text-blue-400 font-medium">{files.length} images selected</p>
-                    ) : (
-                      <div className="space-y-1">
-                        <p className="text-gray-300 font-medium">Click to upload images</p>
-                        <p className="text-xs text-gray-500">Large images will be compressed to under 1MB</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <label className="block text-sm text-gray-400 mb-2 text-center">Drag & Drop Images</label>
+                <CubeNetInput 
+                  faces={faces} 
+                  onFileChange={(index, file) => {
+                    const newFaces = [...faces];
+                    newFaces[index] = file;
+                    setFaces(newFaces);
+                  }}
+                  onRemove={(index) => {
+                    const newFaces = [...faces];
+                    newFaces[index] = null;
+                    setFaces(newFaces);
+                  }}
+                />
               </div>
+
+              <div className="bg-gray-900/50 p-4 rounded-lg">
+                <label className="block text-sm text-gray-400 mb-2">Empty Faces Fill Mode:</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="fillMode" 
+                      checked={fillMode === 'repeat'} 
+                      onChange={() => setFillMode('repeat')}
+                      className="text-blue-600"
+                    />
+                    <span className="text-sm">Repeat Images</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="fillMode" 
+                      checked={fillMode === 'color'} 
+                      onChange={() => setFillMode('color')}
+                      className="text-blue-600"
+                    />
+                    <span className="text-sm">Solid Color</span>
+                  </label>
+                </div>
+                
+                {fillMode === 'color' && (
+                  <div className="mt-3 flex items-center gap-3 animate-fade-in">
+                    <input 
+                      type="color" 
+                      value={solidColor}
+                      onChange={(e) => setSolidColor(e.target.value)}
+                      className="h-8 w-16 cursor-pointer rounded bg-transparent"
+                    />
+                    <span className="text-sm text-gray-300 font-mono">{solidColor}</span>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Message</label>
                 <textarea
                   required
-                  className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white h-24"
+                  className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white h-20"
+                  placeholder="How was your day?"
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
                 />
               </div>
-              <div className="flex gap-3 mt-6">
+
+              <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setIsFormOpen(false)} className="flex-1 py-2 rounded hover:bg-gray-700 transition" disabled={loading}>Cancel</button>
                 <button type="submit" disabled={loading} className="flex-1 py-2 bg-blue-600 rounded hover:bg-blue-500 transition font-bold disabled:opacity-50">
                   {loading ? (compressing ? 'Compressing...' : 'Uploading...') : 'Save Cube'}
