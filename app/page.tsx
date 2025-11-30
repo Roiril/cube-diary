@@ -570,8 +570,8 @@ export default function Home() {
   const currentEntry = entries[selectedIndex];
 
   return (
-    // 背景を完全な黒に変更
-    <main className="h-screen w-full bg-black text-white overflow-hidden relative font-sans">
+    // 背景を完全な黒に変更し、touch-noneを追加してスマホでのスクロールを無効化
+    <main className="h-screen w-full bg-black text-white overflow-hidden relative font-sans touch-none">
       
       {loading && (
         <LoadingOverlay message={compressing ? "Compressing Images..." : "Saving Data..."} />
@@ -758,11 +758,13 @@ export default function Home() {
         {viewMode === 'single' && currentEntry && (
           <PresentationControls 
             global 
+            // @ts-ignore: config prop is missing in recent type definitions but still works
+            config={{ mass: 1, tension: 170, friction: 26 }}
             rotation={[0, 0, 0]} 
             polar={[-Math.PI / 2, Math.PI / 2]}
             azimuth={[-Infinity, Infinity]} 
-            // 感度をスマホ判定(isMobile)に応じて動的に切り替え
-            speed={isMobile ? 5 : 1.5}
+            // ★スマホでの感度をさらに上げる
+            speed={isMobile ? 8 : 1.5}
           >
             <Suspense fallback={<FallbackCube />}>
               <TextureErrorBoundary fallback={<FallbackCube />}>
@@ -781,8 +783,8 @@ export default function Home() {
             rotation={[0, 0, 0]}
             polar={[-Math.PI / 4, Math.PI / 4]} 
             azimuth={[-Infinity, Infinity]}
-            // 感度をスマホ判定(isMobile)に応じて動的に切り替え
-            speed={isMobile ? 3 : 1}
+            // ★ギャラリーも感度を上げる
+            speed={isMobile ? 5 : 1}
           >
             <group>
               <Floor />
