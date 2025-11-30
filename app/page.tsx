@@ -4,7 +4,7 @@ import React, { Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useState, useEffect, Suspense, useMemo } from "react";
 import { Mesh, Vector3, MathUtils } from "three";
-import { OrbitControls, Environment, useTexture, Text, ContactShadows, PresentationControls } from "@react-three/drei";
+import { Environment, useTexture, ContactShadows, PresentationControls } from "@react-three/drei";
 import { supabase } from "@/lib/supabaseClient";
 import imageCompression from 'browser-image-compression';
 
@@ -23,11 +23,11 @@ class TextureErrorBoundary extends Component<{ fallback: ReactNode; children: Re
   }
 }
 
-// ⏳ ローディング画面コンポーネント
+// ⏳ ローディング画面コンポーネント (色は白黒に)
 function LoadingOverlay({ message }: { message: string }) {
   return (
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in cursor-wait">
-      <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mb-4"></div>
       <p className="text-white text-lg font-bold tracking-widest animate-pulse">{message}</p>
     </div>
   );
@@ -61,7 +61,8 @@ function CubeNetInput({
         return (
           <div
             key={face.name}
-            className={`relative border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${file ? 'border-blue-500 bg-gray-800' : 'border-gray-600 hover:border-gray-400 bg-gray-900/50'}`}
+            // 選択時のボーダー色を青から白に変更
+            className={`relative border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${file ? 'border-white bg-gray-800' : 'border-gray-600 hover:border-gray-400 bg-gray-900/50'}`}
             style={{
               gridColumn: face.col,
               gridRow: face.row,
@@ -92,7 +93,8 @@ function CubeNetInput({
                     e.stopPropagation();
                     onRemove(face.index);
                   }}
-                  className="absolute top-0 right-0 bg-red-600 text-white w-5 h-5 flex items-center justify-center rounded-bl text-xs hover:bg-red-500"
+                  // 削除ボタンもモノトーンに
+                  className="absolute top-0 right-0 bg-white text-black w-5 h-5 flex items-center justify-center rounded-bl text-xs hover:bg-gray-200"
                 >
                   ×
                 </button>
@@ -147,7 +149,8 @@ function CubeNet({
         return (
           <div
             key={face.name}
-            className={`relative bg-gray-800 border border-white/20 rounded-sm overflow-hidden group ${isEditable ? 'cursor-pointer hover:border-blue-400' : 'cursor-help'}`}
+            // ホバー時のボーダーを青から白へ
+            className={`relative bg-gray-800 border border-white/20 rounded-sm overflow-hidden group ${isEditable ? 'cursor-pointer hover:border-white' : 'cursor-help'}`}
             style={{
               gridColumn: face.col,
               gridRow: face.row,
@@ -189,7 +192,8 @@ function CubeNet({
                 />
               )
             }
-            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${isEditable ? 'bg-blue-500/40 opacity-0 group-hover:opacity-100' : 'bg-black/60 opacity-0 group-hover:opacity-100'}`}>
+            {/* ホバーオーバーレイを黒系に統一 */}
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${isEditable ? 'bg-white/20 opacity-0 group-hover:opacity-100' : 'bg-black/60 opacity-0 group-hover:opacity-100'}`}>
               <span className="text-[10px] text-white font-mono font-bold uppercase">
                 {isEditable ? 'EDIT' : face.name}
               </span>
@@ -331,7 +335,7 @@ export default function Home() {
   const [newContent, setNewContent] = useState("");
   const [faces, setFaces] = useState<(File | null)[]>(Array(6).fill(null)); 
   const [fillMode, setFillMode] = useState<'repeat' | 'color'>('repeat'); 
-  const [solidColor, setSolidColor] = useState('#3b82f6'); 
+  const [solidColor, setSolidColor] = useState('#888888'); // 初期色をグレーに変更
 
   // 編集用ステート
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -499,7 +503,7 @@ export default function Home() {
 
   const uploadFile = async (file: File, index: number): Promise<string> => {
     const compressionOptions = {
-      maxSizeMB: 0.15,
+      maxSizeMB: 0.15, // 圧縮率強化
       maxWidthOrHeight: 1280,
       useWebWorker: true,
       fileType: 'image/jpeg',
@@ -557,7 +561,8 @@ export default function Home() {
   const currentEntry = entries[selectedIndex];
 
   return (
-    <main className="h-screen w-full bg-gray-900 text-white overflow-hidden relative font-sans">
+    // 背景を完全な黒に変更
+    <main className="h-screen w-full bg-black text-white overflow-hidden relative font-sans">
       
       {loading && (
         <LoadingOverlay message={compressing ? "Compressing Images..." : "Saving Data..."} />
@@ -585,6 +590,7 @@ export default function Home() {
 
       <div className="absolute top-4 right-4 md:top-8 md:right-8 z-20 flex flex-col items-end gap-2">
         <div className="flex gap-1 md:gap-2">
+          {/* ボタンのスタイルをモノトーンに */}
           <button
             onClick={() => setViewMode('single')}
             className={`px-3 py-1.5 md:px-4 md:py-2 text-sm md:text-base rounded-lg font-bold transition ${viewMode === 'single' ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
@@ -640,9 +646,10 @@ export default function Home() {
           >
             ✏️
           </button>
+          {/* 削除ボタンを赤からグレー/白へ変更（モノトーン統一） */}
           <button
             onClick={() => setIsDeleteConfirmOpen(true)}
-            className="bg-red-600 text-white w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-lg md:text-xl shadow-lg hover:bg-red-500 transition-transform duration-200"
+            className="bg-gray-800 text-white border border-gray-600 w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-lg md:text-xl shadow-lg hover:bg-white hover:text-black transition-all duration-200"
             title="Delete Cube"
           >
             🗑️
@@ -664,7 +671,8 @@ export default function Home() {
               </button>
               <button
                 onClick={handleDelete}
-                className="px-6 py-2 rounded-full bg-red-600 text-white hover:bg-red-500 transition font-bold"
+                // 削除実行ボタンもモノトーンに（白背景黒文字で強調）
+                className="px-6 py-2 rounded-full bg-white text-black hover:bg-gray-200 transition font-bold"
               >
                 Delete
               </button>
@@ -695,7 +703,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Message</label>
                 <textarea
-                  className="w-full bg-gray-900 border border-gray-600 rounded p-3 text-white focus:outline-none focus:border-blue-500 h-28"
+                  className="w-full bg-gray-900 border border-gray-600 rounded p-3 text-white focus:outline-none focus:border-white h-28"
                   value={editContent}
                   onChange={(e) => {
                     setEditContent(e.target.value);
@@ -714,9 +722,10 @@ export default function Home() {
                 <button
                   onClick={handleUpdate}
                   disabled={!isEditing || loading}
+                  // 保存ボタンをモノトーンに
                   className={`flex-1 py-2 rounded font-bold transition ${
                     isEditing 
-                      ? 'bg-blue-600 hover:bg-blue-500 text-white' 
+                      ? 'bg-white text-black hover:bg-gray-200' 
                       : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                   }`}
                 >
@@ -735,12 +744,17 @@ export default function Home() {
 
         <CameraController viewMode={viewMode} />
 
+        {/* OrbitControlsは削除済み */}
+
         {viewMode === 'single' && currentEntry && (
           <PresentationControls 
             global 
+            config={{ mass: 1, tension: 170, friction: 26 }} 
             rotation={[0, 0, 0]} 
             polar={[-Math.PI / 2, Math.PI / 2]}
             azimuth={[-Infinity, Infinity]} 
+            // ★スマホでの感度を上げる (speed 2.5)
+            speed={2.5}
           >
             <Suspense fallback={<FallbackCube />}>
               <TextureErrorBoundary fallback={<FallbackCube />}>
@@ -759,6 +773,8 @@ export default function Home() {
             rotation={[0, 0, 0]}
             polar={[-Math.PI / 4, Math.PI / 4]} 
             azimuth={[-Infinity, Infinity]}
+            // ★ギャラリーも少し感度を上げる
+            speed={1.5}
           >
             <group>
               <Floor />
@@ -798,7 +814,8 @@ export default function Home() {
       {!isFormOpen && !isEditModalOpen && !isDeleteConfirmOpen && (
         <button
           onClick={() => setIsFormOpen(true)}
-          className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-20 bg-blue-600 text-white w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-200"
+          // 投稿ボタンも白黒に
+          className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-20 bg-white text-black w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-200"
         >
           ＋
         </button>
@@ -834,7 +851,8 @@ export default function Home() {
                       name="fillMode" 
                       checked={fillMode === 'repeat'} 
                       onChange={() => setFillMode('repeat')}
-                      className="text-blue-600"
+                      // ラジオボタンのアクセントカラーはCSSで制御（Tailwindのtext-white等では色が変わらない場合があるため、標準の青のままか、カスタムCSSが必要だが今回はシンプルに）
+                      className="accent-white" 
                     />
                     <span className="text-sm">Repeat Images</span>
                   </label>
@@ -844,7 +862,7 @@ export default function Home() {
                       name="fillMode" 
                       checked={fillMode === 'color'} 
                       onChange={() => setFillMode('color')}
-                      className="text-blue-600"
+                      className="accent-white"
                     />
                     <span className="text-sm">Solid Color</span>
                   </label>
@@ -865,7 +883,8 @@ export default function Home() {
                 <label className="block text-sm text-gray-400 mb-1">Message</label>
                 <textarea
                   required
-                  className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white h-20"
+                  // ボーダーフォーカス時も白に
+                  className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white h-20 focus:outline-none focus:border-white"
                   placeholder="How was your day?"
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
@@ -873,7 +892,8 @@ export default function Home() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setIsFormOpen(false)} className="flex-1 py-2 rounded hover:bg-gray-700 transition" disabled={loading}>Cancel</button>
-                <button type="submit" disabled={loading} className="flex-1 py-2 bg-blue-600 rounded hover:bg-blue-500 transition font-bold disabled:opacity-50">
+                {/* 保存ボタンも白黒に */}
+                <button type="submit" disabled={loading} className="flex-1 py-2 bg-white text-black rounded hover:bg-gray-200 transition font-bold disabled:opacity-50">
                   {loading ? (compressing ? 'Compressing...' : 'Uploading...') : 'Save Cube'}
                 </button>
               </div>
