@@ -1,10 +1,9 @@
 "use client";
 
-import React, { Component, ReactNode, useCallback, useMemo } from "react";
+import React, { Component, ReactNode, useCallback, useMemo, useRef, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useRef, useState, useEffect, Suspense } from "react";
-import { Mesh } from "three";
-import { Environment, useTexture, PresentationControls, OrbitControls } from "@react-three/drei";
+import { Mesh, Vector3 } from "three";
+import { Environment, useTexture, PresentationControls, CameraControls } from "@react-three/drei"; // CameraControlsを追加
 import { useAuth } from "@/hooks/useAuth";
 import { useEntries } from "@/hooks/useEntries";
 import { useImageUpload } from "@/hooks/useImageUpload";
@@ -310,23 +309,140 @@ function FallbackCube({ position = [0, 0, 0], color = "#444" }: { position?: [nu
   );
 }
 
-// 🎥 カメラ位置更新コンポーネント (モード切替時のスムーズな移動を担当)
-function CameraPositionUpdater({ viewMode }: { viewMode: 'single' | 'gallery' }) {
-  const { camera, size } = useThree();
-  
+// 🎥 SceneContent: Canvas内部のロジック（カメラ制御とシーン切り替え）を一元管理
+// ここでCameraControlsを使ってスムーズなアニメーションを実現します
+function SceneContent({ 
+  entries,
+  viewMode,
+  setViewMode,
+  setSelectedIndex,
+  selectedIndex,
+  galleryLayout,
+  isEditModalOpen,
+  isDeleteConfirmOpen,
+  editImages,
+  getImageUrls,
+  currentEntry
+}: {
+  entries: Entry[],
+  viewMode: ViewMode,
+  setViewMode: (mode: ViewMode) => void,
+  setSelectedIndex: (index: number) => void,
+  selectedIndex: number,
+  galleryLayout: GalleryLayout,
+  isEditModalOpen: boolean,
+  isDeleteConfirmOpen: boolean,
+  editImages: (string | File)[],
+  getImageUrls: (entry: Entry | undefined) => string[],
+  currentEntry: Entry | undefined
+}) {
+  const cameraControlsRef = useRef<CameraControls>(null!);
+  const { size } = useThree();
+
+  // シングル/ギャラリー切り替え時のカメラ位置リセット
   useEffect(() => {
     const isMobile = size.width < 768;
     const target = isMobile 
       ? CAMERA_POSITIONS[viewMode].mobile 
       : CAMERA_POSITIONS[viewMode].desktop;
 
-    // モード切り替え時にカメラを所定位置へリセット
-    // スムーズなアニメーションはOrbitControlsのdampingに任せるか、必要に応じてLerpする
-    camera.position.set(target.x, target.y, target.z);
-    camera.lookAt(0, 0, 0);
-  }, [viewMode, size.width, camera]);
+    if (cameraControlsRef.current) {
+      if (viewMode === 'single') {
+        // シングルモードへの切り替え時は、Cubeが(0,0,0)にいるのでそこを見る
+        // transition: false にして、ズーム後の位置から即座に切り替わったように見せる（または軽くアニメーション）
+        cameraControlsRef.current.setLookAt(target.x, target.y, target.z, 0, 0, 0, false);
+      } else {
+        // ギャラリーに戻る時はスムーズに全体へ
+        cameraControlsRef.current.setLookAt(target.x, target.y, target.z, 0, 0, 0, true);
+      }
+    }
+  }, [viewMode, size.width]);
 
-  return null;
+  // キューブクリック時の「ズームしてから切り替え」処理
+  const handleCubeClick = useCallback((index: number) => {
+    const pos = getPosition(index, entries.length, galleryLayout);
+    const [x, y, z] = pos;
+
+    // 1. まずカメラを選択したキューブの目の前までスムーズに移動させる
+    // (z軸方向に少し手前に配置)
+    cameraControlsRef.current?.setLookAt(
+      x, y, z + 5, // カメラ位置
+      x, y, z,     // 注視点
+      true         // アニメーション有効
+    );
+
+    // 2. アニメーションの時間（約0.5秒）を待ってからモードを切り替える
+    // これにより「近づいてから画面が変わる」演出になる
+    setTimeout(() => {
+      setSelectedIndex(index);
+      setViewMode('single');
+    }, 500); 
+
+  }, [entries.length, galleryLayout, setSelectedIndex, setViewMode]);
+
+  return (
+    <>
+      <CameraControls 
+        ref={cameraControlsRef}
+        enabled={viewMode === 'gallery'} // シングルモードではPresentationControlsに譲るため無効化
+        minDistance={5}
+        maxDistance={60}
+        dollySpeed={0.5}
+        smoothTime={0.25} // カメラの動きの滑らかさ
+        makeDefault
+      />
+
+      {viewMode === 'gallery' ? (
+        <group>
+          {entries.map((entry, index) => {
+            const position = getPosition(index, entries.length, galleryLayout);
+            const imageUrls = getImageUrls(entry);
+            const filledUrls = Array(CUBE_FACE_COUNT).fill(null).map((_, i) => imageUrls[i % imageUrls.length]);
+            return (
+              <Suspense key={entry.id} fallback={<FallbackCube position={position} />}>
+                <TextureErrorBoundary fallback={<FallbackCube position={position} />}>
+                    {imageUrls.length > 0 ? (
+                      <TexturedCube 
+                        images={filledUrls} 
+                        position={position} 
+                        onClick={() => handleCubeClick(index)} // ここでアニメーション発火
+                        enableHoverEffect={true} 
+                      />
+                    ) : <FallbackCube position={position} />}
+                </TextureErrorBoundary>
+              </Suspense>
+            );
+          })}
+          {/* 未来のキューブ (プレースホルダー) */}
+          {Array.from({ length: 8 }).map((_, i) => {
+             const futureIndex = entries.length + i;
+             const position = getPosition(futureIndex, entries.length + 8, galleryLayout);
+             return <FallbackCube key={`future-${futureIndex}`} position={position} color="#333" />;
+          })}
+        </group>
+      ) : (
+        /* シングルモード: 物を回す */
+        currentEntry && (
+          <PresentationControls 
+            global 
+            rotation={[0, 0, 0]} 
+            polar={[-Math.PI / 2, Math.PI / 2]}
+            azimuth={[-Infinity, Infinity]} 
+            speed={1.5}
+          >
+            <Suspense fallback={<FallbackCube />}>
+              <TextureErrorBoundary fallback={<FallbackCube />}>
+                <TexturedCube 
+                  images={isEditModalOpen ? editImages : getImageUrls(currentEntry)} 
+                  enableHoverEffect={false} 
+                />
+              </TextureErrorBoundary>
+            </Suspense>
+          </PresentationControls>
+        )
+      )}
+    </>
+  );
 }
 
 export default function Home() {
@@ -699,70 +815,20 @@ export default function Home() {
         <spotLight position={[10, 10, 10]} angle={0.3} penumbra={1} castShadow intensity={1} />
         <Environment preset="city" />
 
-         <CameraPositionUpdater viewMode={viewMode} />
-
-         {/* ▼▼▼ モードによる操作系統の切り替え ▼▼▼ */}
-        {viewMode === 'gallery' ? (
-          <>
-            <OrbitControls 
-              makeDefault
-              enableDamping={true}
-              dampingFactor={0.05}
-              autoRotate={true}
-              autoRotateSpeed={0.5}
-              minDistance={5}
-              maxDistance={60}
-              target={[0, 0, 0]}
-            />
-            <group>
-              {entries.map((entry, index) => {
-                const position = getPosition(index, entries.length, galleryLayout);
-                const imageUrls = getImageUrls(entry);
-                const filledUrls = Array(CUBE_FACE_COUNT).fill(null).map((_, i) => imageUrls[i % imageUrls.length]);
-                return (
-                  <Suspense key={entry.id} fallback={<FallbackCube position={position} />}>
-                    <TextureErrorBoundary fallback={<FallbackCube position={position} />}>
-                       {imageUrls.length > 0 ? (
-                         <TexturedCube 
-                           images={filledUrls} 
-                           position={position} 
-                           onClick={() => { setSelectedIndex(index); setViewMode('single'); }} 
-                           enableHoverEffect={true} 
-                         />
-                       ) : <FallbackCube position={position} />}
-                    </TextureErrorBoundary>
-                  </Suspense>
-                );
-              })}
-              {/* 未来のキューブ (プレースホルダー) */}
-              {Array.from({ length: 8 }).map((_, i) => {
-                 const futureIndex = entries.length + i;
-                 const position = getPosition(futureIndex, entries.length + 8, galleryLayout);
-                 return <FallbackCube key={`future-${futureIndex}`} position={position} color="#333" />;
-              })}
-            </group>
-          </>
-        ) : (
-          /* シングルモード: 物を回す */
-          currentEntry && (
-            <PresentationControls 
-              global 
-              rotation={[0, 0, 0]} 
-              polar={[-Math.PI / 2, Math.PI / 2]}
-              azimuth={[-Infinity, Infinity]} 
-              speed={1.5}
-            >
-              <Suspense fallback={<FallbackCube />}>
-                <TextureErrorBoundary fallback={<FallbackCube />}>
-                  <TexturedCube 
-                    images={isEditModalOpen ? editImages : getImageUrls(currentEntry)} 
-                    enableHoverEffect={false} 
-                  />
-                </TextureErrorBoundary>
-              </Suspense>
-            </PresentationControls>
-          )
-        )}
+        {/* SceneContentにCanvas内の状態管理と描画ロジックを集約 */}
+        <SceneContent 
+          entries={entries}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          setSelectedIndex={setSelectedIndex}
+          selectedIndex={selectedIndex}
+          galleryLayout={galleryLayout}
+          isEditModalOpen={isEditModalOpen}
+          isDeleteConfirmOpen={isDeleteConfirmOpen}
+          editImages={editImages}
+          getImageUrls={getImageUrls}
+          currentEntry={currentEntry}
+        />
       </Canvas>
 
       {!isFormOpen && !isEditModalOpen && !isDeleteConfirmOpen && !user?.isGuest && (
